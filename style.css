@@ -196,7 +196,10 @@ textarea { resize: vertical; line-height: 1.7; }
 .foot p { margin: 4px 0; }
 
 @media (max-width: 720px) {
-  .nav-link { display: none; }
+  .nav-hide-sm { display: none; }
+  .nav-link { padding: 6px 4px; font-size: .85rem; }
+  .logo-text { font-size: 1.15rem; }
+  .nav { gap: 6px; }
   .user-name { display: none; }
   .user-btn { padding: 4px 8px; }
   .row2, .editor { grid-template-columns: 1fr; }
@@ -205,3 +208,12 @@ textarea { resize: vertical; line-height: 1.7; }
   .hero { padding: 26px 20px; }
   .form { padding: 18px 16px; }
 }
+
+/* ---------- v1.1.0: ページ分け ---------- */
+.page-title { font-size: clamp(1.3rem, 3.5vw, 1.7rem); margin: 6px 0 4px; }
+.crumbs { font-size: .8rem; color: var(--sub); margin-bottom: 6px; }
+.crumbs a { color: var(--sub); }
+a.genre-badge { text-decoration: none; }
+.foot-links a { color: var(--sub); }
+.intro { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 20px; margin-top: 18px; color: var(--sub); font-size: .92rem; }
+.intro h2 { color: var(--ink); font-size: 1.05rem; margin: 0 0 6px; }

@@ -443,3 +443,20 @@ grant execute on function public.gp_me(text), public.gp_list(text, text, text, t
   public.gp_comment_add(text, bigint, text), public.gp_comment_delete(text, bigint), public.gp_report(text, text, bigint, text),
   public.gp_admin_reports(text), public.gp_admin_dismiss(text, bigint), public.gp_tags(), public.gp_profile(text),
   public.gp_diagnose(jsonb) to anon, authenticated;
+
+-- ========== SEO 用の書き出し（マイグレーション gamepita_export） ==========
+-- 静的ページを作るため、公開中の記事だけ・公開してよい項目だけを返す
+create or replace function public.gp_export() returns jsonb language sql stable
+  security definer set search_path = 'public' as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', p.id, 'title', p.title, 'game', p.game, 'genre', p.genre, 'tags', p.tags, 'platforms', p.platforms,
+    'players', p.players, 'length', p.length, 'difficulty', p.difficulty, 'price', p.price,
+    'rating', p.rating, 'body', p.body, 'cover_url', p.cover_url, 'official_url', p.official_url,
+    'created_at', p.created_at, 'updated_at', p.updated_at,
+    'author', public._gp_author(p.ka_id),
+    'likes', (select count(*) from public.gp_likes l where l.post_id = p.id))
+    order by p.id desc), '[]'::jsonb)
+  from (select * from public.gp_posts where status = 'public' order by id desc limit 5000) p
+$$;
+revoke all on function public.gp_export() from public;
+grant execute on function public.gp_export() to anon, authenticated;
