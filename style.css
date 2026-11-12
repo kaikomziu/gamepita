@@ -297,3 +297,16 @@ a.genre-badge { text-decoration: none; }
   .nav .lbl2 { display: none; }
   .nav-link { font-size: 1.05rem; }
 }
+
+/* ---------- v1.3.0: 運営者情報・お問い合わせ ---------- */
+.rules h2 { font-size: 1.1rem; margin: 22px 0 8px; border-left: 5px solid var(--accent); padding-left: 10px; }
+.rules ul, .rules ol { padding-left: 1.4em; }
+.rules li { margin: 4px 0; }
+.info { display: grid; gap: 6px; margin: 8px 0; }
+.info div { display: grid; grid-template-columns: 9em 1fr; gap: 10px; background: var(--bg); border-radius: 10px; padding: 8px 12px; }
+.info dt { color: var(--sub); font-size: .88rem; }
+.info dd { margin: 0; overflow-wrap: anywhere; }
+.inq-form { margin-top: 12px; }
+.inq { border-top: 1px solid var(--line); padding: 10px 0; }
+.inq-reply { background: var(--soft); border-radius: 10px; padding: 8px 12px; margin-top: 6px; }
+@media (max-width: 520px) { .info div { grid-template-columns: 1fr; gap: 2px; } }

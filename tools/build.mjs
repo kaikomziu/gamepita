@@ -214,11 +214,22 @@ for (const t of TYPES) {
   sitemap.push([abs(path), '']);
 }
 
+// 運営者情報・プライバシーポリシー・利用規約（本文も静的に入れる）
+for (const [path, title, desc, html] of [
+  [`${BASE}about/`, '運営者情報・クレジット', 'GamePita（ゲームピタ）の運営者情報とクレジットです。', R.aboutHtml(BASE)],
+  [`${BASE}privacy/`, 'プライバシーポリシー', 'GamePita で集める情報と、その使い道・管理のしかたについて説明します。', R.privacyHtml(BASE)],
+  [`${BASE}terms/`, '利用規約', 'GamePita を使うときのルール（利用規約）です。', R.termsHtml(BASE)],
+]) {
+  await write(path, page(head({ title, desc, path }), html));
+  sitemap.push([abs(path), '']);
+}
+
 // 中身は app.js が作るページ
 const shells = [
   [`${BASE}shindan/`, { title: 'ピタっと診断（自分に合うゲームがわかる）', desc: '6つの質問に答えるだけで、みんなのゲーム紹介記事の中から、あなたにピタっと合うゲームを相性つきでおすすめします。' }, true],
   [`${BASE}rules/`, { title: '投稿のルール・本文の書き方', desc: 'GamePita に記事やコメントを書くときのルールと、本文の書き方（見出し・太字・画像・YouTube の埋め込み）です。' }, true],
   [`${BASE}new/`, { title: '記事を書く', noindex: true }, false],
+  [`${BASE}contact/`, { title: 'お問い合わせ', desc: 'GamePita へのご質問・不具合の報告・削除の依頼などは、こちらからどうぞ。' }, true],
   [`${BASE}admin/`, { title: '管理', noindex: true }, false],
   [`${BASE}mylist/`, { title: 'マイリスト', noindex: true }, false],
 ];

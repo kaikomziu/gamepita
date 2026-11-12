@@ -3,7 +3,7 @@
 // URL は /blog/123/ のような本物のパス（History API）。公開ページは tools/build.mjs が静的 HTML も作る。
 (() => {
   'use strict';
-  const VERSION = '1.2.0';
+  const VERSION = '1.3.0';
   const SUPABASE_URL = 'https://kifnzvktwbomxthzvvgy.supabase.co';
   // 公開用キー（ブラウザに置いてよいキー。テーブルは RLS で閉じていて RPC しか呼べない）
   const SUPABASE_KEY = 'sb_publishable_Ea_sHRg6wMwO9YkDTjgOog_stQT1mfq';
@@ -39,6 +39,8 @@
     forbidden: 'この操作はできません。',
     not_found: '見つかりませんでした（消された可能性があります）。',
     bad: '入力の形がおかしいようです。',
+    name: 'お名前（ニックネーム）は1〜40文字で書いてください。',
+    inquiry: 'お問い合わせの内容は1〜2000文字で書いてください。',
   };
   const reasonText = r => REASONS[r] || 'うまくいきませんでした。もう一度ためしてください。';
 
@@ -157,11 +159,14 @@
     if (!notifs) await loadNotifs();
     const items = notifs?.items || [];
     openModal(`<h2>🔔 通知</h2><div class="notif-list">${items.length ? items.map(x => `
-        <a class="notif ${x.unread ? 'unread' : ''}" href="${esc(postUrl(BASE, x.post_id))}" data-close>
+        ${x.kind === 'reply' ? `<a class="notif ${x.unread ? 'unread' : ''}" href="${BASE}contact/" data-close>
+          📮 <b>お問い合わせに返信がありました</b><span class="small">${esc(ago(x.at))}</span>
+          ${x.body ? `<span class="small">${esc(x.body)}</span>` : ''}</a>`
+        : `<a class="notif ${x.unread ? 'unread' : ''}" href="${esc(postUrl(BASE, x.post_id))}" data-close>
           ${esc(x.who?.avatar || '😀')} <b>${esc(x.who?.display_name || x.who?.username || 'だれか')}</b> さんが
           ${x.kind === 'comment' ? '💬 コメントしました' : '🧩 ピタっと！しました'}
           <span class="small">「${esc(x.post_title || '')}」・${esc(ago(x.at))}</span>
-          ${x.body ? `<span class="small">${esc(x.body)}</span>` : ''}</a>`).join('')
+          ${x.body ? `<span class="small">${esc(x.body)}</span>` : ''}</a>`}`).join('')
       : '<p class="small">まだ通知はありません。記事にコメントやピタっと！がつくと、ここに届きます。</p>'}</div>
       <div class="form-actions"><button class="btn btn-ghost" type="button" data-close>閉じる</button></div>`);
     if (notifs && Number(notifs.unread)) {
@@ -529,7 +534,7 @@
           <a class="btn btn-ghost" href="${editId ? esc(postUrl(BASE, editId)) : BASE}">やめる</a>
           <button class="btn btn-primary" type="submit" id="saveBtn">${editId ? '更新する' : '投稿する'}</button>
         </div>
-        <p class="small">投稿すると、<a href="${BASE}rules/" target="_blank" rel="noopener">投稿のルール</a>に同意したことになります。</p>
+        <p class="small">投稿すると、<a href="${BASE}terms/" target="_blank" rel="noopener">利用規約</a>と<a href="${BASE}rules/" target="_blank" rel="noopener">投稿のルール</a>に同意したことになります。</p>
       </form>`;
 
     // ゲーム名の候補（すでに記事があるゲーム）
@@ -818,6 +823,8 @@
           <form id="offForm" class="comment-form"><input type="text" id="offUser" maxlength="40" placeholder="ユーザー名（@のあと）">
             <button class="btn btn-sm btn-primary" type="submit" data-on="1">公認にする</button>
             <button class="btn btn-sm" type="submit" data-on="0">公認を外す</button></form></section>
+        <h2 class="section-title">📮 お問い合わせ</h2>
+        <div id="admInq"><div class="loading">読み込み中…</div></div>
         <h2 class="section-title">🚩 通報の一覧（${r.reports.length}）</h2>
         ${r.reports.length ? r.reports.map(x => `<div class="report-item">
           <div class="small">${esc(fmtDate(x.created_at))} ／ ${x.target === 'post' ? '記事' : 'コメント'} ／ 通報者: ${esc(x.reporter?.display_name || '?')}</div>
@@ -828,6 +835,7 @@
             <button class="btn btn-sm btn-danger" type="button" data-rm="${esc(x.target)}:${Number(x.target_id)}">${x.target === 'post' ? '記事を非表示' : 'コメントを削除'}</button>
             <button class="btn btn-sm" type="button" data-dismiss="${Number(x.id)}">問題なし（片づける）</button>
           </div></div>`).join('') : '<div class="empty">通報はありません。</div>'}`;
+      loadAdminInquiries();
       $('offForm').addEventListener('submit', async e => {
         e.preventDefault();
         const on = (e.submitter || {}).dataset?.on === '1';
@@ -855,6 +863,29 @@
     } catch { app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; }
   }
 
+  async function loadAdminInquiries() {
+    const el = $('admInq'); if (!el) return;
+    let r;
+    try { r = await rpc('gp_admin_inquiries', { p_token: token() }); } catch { el.innerHTML = '<p class="small">読み込めませんでした。</p>'; return; }
+    if (!r.ok) { el.innerHTML = `<p class="small">${esc(reasonText(r.reason))}</p>`; return; }
+    el.innerHTML = r.items.length ? r.items.map(q => `<div class="report-item">
+        <div class="small">${esc(fmtDate(q.created_at))} ／ ${esc(INQ_CATS[q.category] || '')} ／ ${esc(q.name)}
+          ${q.account ? `（ログイン: @${esc(q.account.username)}）` : '（未ログイン）'} ${q.replied_at ? '✅ 返信済み' : '🆕 未返信'}</div>
+        <p class="comment-body">${esc(q.body)}</p>
+        <form class="comment-form" data-inq="${Number(q.id)}">
+          <textarea rows="2" maxlength="2000" placeholder="返信を書く">${esc(q.reply || '')}</textarea>
+          <button class="btn btn-sm btn-primary" type="submit">${q.reply ? '返信を直す' : '返信する'}</button></form></div>`).join('')
+      : '<p class="small">お問い合わせはありません。</p>';
+    el.querySelectorAll('form[data-inq]').forEach(f => f.addEventListener('submit', async e => {
+      e.preventDefault();
+      try {
+        const x = await rpc('gp_admin_inquiry_reply', { p_token: token(), p_id: Number(f.dataset.inq), p_reply: f.querySelector('textarea').value.trim() });
+        if (!x.ok) { toast(reasonText(x.reason)); return; }
+        toast('返信しました'); loadAdminInquiries();
+      } catch { toast('通信できませんでした'); }
+    }));
+  }
+
   // ---------- ルール ----------
   function renderRules() {
     setMeta({ title: '投稿のルール・本文の書き方', desc: 'GamePita に記事やコメントを書くときのルールと、本文の書き方（見出し・太字・画像・YouTube の埋め込み）です。', path: `${BASE}rules/` });
@@ -879,6 +910,88 @@
       </ul>
       <p class="small">安全のため、使える URL は https:// で始まるものだけです。HTML は使えません（文字としてそのまま表示されます）。</p>
       <p><a href="${BASE}">← トップへ</a></p></section>`;
+  }
+
+  // ---------- 運営者情報・プライバシーポリシー・利用規約 ----------
+  function renderAbout() {
+    setMeta({ title: '運営者情報・クレジット', desc: 'GamePita（ゲームピタ）の運営者情報とクレジットです。', path: `${BASE}about/` });
+    app.innerHTML = R.aboutHtml(BASE);
+  }
+  function renderPrivacy() {
+    setMeta({ title: 'プライバシーポリシー', desc: 'GamePita で集める情報と、その使い道・管理のしかたについて説明します。', path: `${BASE}privacy/` });
+    app.innerHTML = R.privacyHtml(BASE);
+  }
+  function renderTerms() {
+    setMeta({ title: '利用規約', desc: 'GamePita を使うときのルール（利用規約）です。', path: `${BASE}terms/` });
+    app.innerHTML = R.termsHtml(BASE);
+  }
+
+  // ---------- お問い合わせ ----------
+  const INQ_CATS = { question: '❓ 使い方の質問', bug: '🐛 不具合の報告', delete: '🗑️ 削除の依頼', report: '🚩 違反の報告', other: '💬 そのほか・ご意見' };
+  // 返信を見るための、この端末だけの番号（メールアドレスの代わり）
+  function inboxKey() {
+    try {
+      let k = localStorage.getItem('gp_inbox');
+      if (!k || !/^[0-9a-f-]{36}$/.test(k)) { k = crypto.randomUUID(); localStorage.setItem('gp_inbox', k); }
+      return k;
+    } catch { return null; }
+  }
+  async function renderContact() {
+    setMeta({ title: 'お問い合わせ', desc: 'GamePita へのご質問・不具合の報告・削除の依頼などは、こちらからどうぞ。', path: `${BASE}contact/` });
+    const u = ka?.user();
+    app.innerHTML = `<section class="rules">
+      <h1>📮 お問い合わせ</h1>
+      <p>ご質問・不具合の報告・削除の依頼・ご意見などは、こちらから送ってください。</p>
+      <ul class="small">
+        <li>メールアドレスは必要ありません。<b>返信はこのページに表示されます</b>（送ったのと同じ端末・ブラウザで開いてください）。</li>
+        <li>ログインして送ると、別の端末でも返信を見られて、🔔通知でもお知らせします。</li>
+        <li>個人情報（本名・住所・電話番号など）は書かないでください。</li>
+        <li>個人で運営しているため、返信までお時間をいただくことがあります。</li>
+      </ul>
+      <form id="inqForm" class="inq-form" novalidate>
+        <div class="field"><label for="inqCat">種類</label>
+          <select id="inqCat">${Object.entries(INQ_CATS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></div>
+        <div class="field"><label for="inqName">お名前（ニックネームでOK） <span class="hint">40文字まで</span></label>
+          <input type="text" id="inqName" maxlength="40" value="${esc(u ? (u.display_name || u.username) : '')}"></div>
+        <div class="field"><label for="inqBody">内容 <span class="hint">2000文字まで</span></label>
+          <textarea id="inqBody" rows="7" maxlength="2000" placeholder="どの記事・どのページのことかがわかると、早く対応できます（記事の URL など）"></textarea></div>
+        <p class="err" id="inqErr" role="alert"></p>
+        <div class="form-actions"><button class="btn btn-primary" type="submit" id="inqSend">送信する</button></div>
+      </form>
+      <h2>これまでのお問い合わせ</h2>
+      <div id="inqList"><div class="loading">読み込み中…</div></div>
+    </section>`;
+    const loadMine = async () => {
+      const el = $('inqList'); if (!el) return;
+      try {
+        const r = await rpc('gp_inquiry_mine', { p_token: token(), p_inbox_key: inboxKey() });
+        el.innerHTML = r.items.length ? r.items.map(q => `<div class="inq">
+            <div class="small">${esc(fmtDate(q.created_at))} ／ ${esc(INQ_CATS[q.category] || '')}</div>
+            <p class="comment-body">${esc(q.body)}</p>
+            ${q.reply ? `<div class="inq-reply"><b>📮 運営者からの返信</b>（${esc(fmtDate(q.replied_at))}）<p class="comment-body">${esc(q.reply)}</p></div>`
+              : '<div class="small">⏳ 返信をお待ちください</div>'}</div>`).join('')
+          : '<p class="small">まだありません。</p>';
+      } catch { el.innerHTML = '<p class="small">読み込めませんでした。</p>'; }
+    };
+    $('inqForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const err = $('inqErr'); err.textContent = '';
+      const name = $('inqName').value.trim(), body = $('inqBody').value.trim();
+      if (!name) { err.textContent = REASONS.name; return; }
+      if (!body) { err.textContent = REASONS.inquiry; return; }
+      const key = inboxKey();
+      if (!key) { err.textContent = 'この端末では送れません（ブラウザの保存機能がオフになっています）。'; return; }
+      $('inqSend').disabled = true;
+      try {
+        const r = await rpc('gp_inquiry_submit', { p_token: token(), p_inbox_key: key, p_category: $('inqCat').value, p_name: name, p_body: body });
+        if (!r.ok) { err.textContent = reasonText(r.reason); return; }
+        $('inqBody').value = '';
+        toast('送信しました。ありがとうございます！');
+        loadMine();
+      } catch { err.textContent = '送れませんでした。通信を確かめてください。'; }
+      finally { const b = $('inqSend'); if (b) b.disabled = false; }
+    });
+    loadMine();
   }
 
   function renderNotFound() {
@@ -923,6 +1036,10 @@
     else if ((m = rel.match(/^user\/([^/]{1,64})\/?$/))) { let u; try { u = decodeURIComponent(m[1]); } catch { u = ''; } renderProfile(u); }
     else if (/^admin\/?$/.test(rel)) renderAdmin();
     else if (/^rules\/?$/.test(rel)) renderRules();
+    else if (/^about\/?$/.test(rel)) renderAbout();
+    else if (/^privacy\/?$/.test(rel)) renderPrivacy();
+    else if (/^terms\/?$/.test(rel)) renderTerms();
+    else if (/^contact\/?$/.test(rel)) renderContact();
     else renderNotFound();
   }
 

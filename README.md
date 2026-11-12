@@ -1,4 +1,4 @@
-# GamePita（ゲームピタ） v1.2.0
+# GamePita（ゲームピタ） v1.3.0
 
 自分に合うゲームを、ピタっと見つける。好きなゲームを紹介し合う記事サイト。素の HTML/CSS/JS（`template.html` `style.css` `render.js` `app.js`）。
 
@@ -18,6 +18,10 @@
   - 書いた人のバッジ（記事数・もらったピタっと！・コメント数・公認ライター。`_gp_badges`）。公認は管理画面で付ける。
   - 本文の `||ネタバレ||`、見出し3つ以上で目次、ダークモード（`theme.js`、`gp_theme`）、🔔通知（自分の記事へのコメント・ピタっと！、`gp_notifs`）。
 
+- v1.3.0: 運営者情報・クレジット `/about/`、プライバシーポリシー `/privacy/`、利用規約 `/terms/`（本文は `render.js` の `aboutHtml` など、制定日は `LEGAL_DATE`）、
+  お問い合わせ `/contact/`（メールアドレスは集めない。端末ごとの番号 `gp_inbox` かアカウントで返信を見る。管理画面で返信、ログイン中なら🔔通知）。
+  DB は `gp_inquiries` と `gp_inquiry_submit` `gp_inquiry_mine` `gp_admin_inquiries` `gp_admin_inquiry_reply`（`supabase/v1_3_contact.sql`）。
+
 ## URL（ページ分け）
 `/`トップ ・ `/blog/` ブログ一覧（`?q=` `?tag=` `?sort=`）・ `/blog/123/` 記事 ・ `/blog/123/edit/` 編集 ・ `/genre/rpg/` ジャンル別 ・
 `/shindan/` 診断 ・ `/shindan/type/<slug>/` 診断タイプ ・ `/game/<id>/` ゲーム ・ `/mylist/` マイリスト ・ `/user/ユーザー名/` 書いた人 ・ `/new/` 書く ・ `/rules/` ルール ・ `/admin/` 管理。
@@ -34,7 +38,7 @@
 ## しくみ
 - ログイン: かるわかGAMESアカウント（`karuwaka-account.js`、`data-keys` は空なのでクラウドセーブはしない）。
   `kaikomziu.github.io` に置くと、ほかのゲームとログイン状態を共有できる。管理者は `ka_accounts.is_admin`。
-- DB: 共有 Supabase kifnzvktwbomxthzvvgy、マイグレーション `gamepita_site` `gamepita_export` `gamepita_v1_2` `gamepita_backfill_game_id`（中身は `supabase/schema.sql` と `supabase/v1_2_features.sql`）。
+- DB: 共有 Supabase kifnzvktwbomxthzvvgy、マイグレーション `gamepita_site` `gamepita_export` `gamepita_v1_2` `gamepita_backfill_game_id` `gamepita_contact`（中身は `supabase/schema.sql` `supabase/v1_2_features.sql` `supabase/v1_3_contact.sql`）。
   テーブル `gp_posts` `gp_likes` `gp_comments` `gp_reports` `gp_games` `gp_users` `gp_marks` は RLS で全拒否、操作は SECURITY DEFINER の RPC だけ:
   `gp_me` `gp_list` `gp_get` `gp_post_save` `gp_post_delete` `gp_like_toggle` `gp_comment_add` `gp_comment_delete`
   `gp_report` `gp_admin_reports` `gp_admin_dismiss` `gp_tags` `gp_profile` `gp_diagnose` `gp_export`（静的ページ用） `gp_game` `gp_game_suggest` `gp_similar` `gp_mark_set` `gp_my_marks` `gp_notifs` `gp_notif_seen` `gp_admin_set_official` `gp_admin_writers`。
