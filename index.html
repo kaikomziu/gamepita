@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 読み込み元を制限（XSS 対策）。外部はかるわかGAMESアカウント・Supabase・画像(https)・YouTube だけ -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://kaikomziu.github.io; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src https://kifnzvktwbomxthzvvgy.supabase.co; frame-src https://www.youtube-nocookie.com; base-uri 'none'; form-action 'self'; manifest-src 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>GamePita（ゲームピタ）｜自分に合うゲームをピタっと見つける</title>
+<meta name="description" content="好きなゲームを紹介し合うサイト。だれでも記事を書けて、ピタっと診断で自分に合うゲームが見つかります。">
+<meta property="og:title" content="GamePita（ゲームピタ）">
+<meta property="og:description" content="自分に合うゲームをピタっと見つける。好きなゲームを紹介し合うサイト。">
+<meta property="og:type" content="website">
+<link rel="icon" href="icon.svg?v=1.0.0" type="image/svg+xml">
+<link rel="stylesheet" href="style.css?v=1.0.0">
+<script src="https://kaikomziu.github.io/game-links/js/karuwaka-account.js" data-game="gamepita" data-keys="" data-badge="off"></script>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="logo" href="#/" aria-label="GamePita トップへ">
+      <img src="icon.svg?v=1.0.0" alt="" width="34" height="34">
+      <span class="logo-text">Game<b>Pita</b></span>
+    </a>
+    <nav class="nav">
+      <a href="#/shindan" class="nav-link">🧩 ピタっと診断</a>
+      <a href="#/new" class="btn btn-primary btn-sm" id="newBtn">✏️ 記事を書く</a>
+      <button class="user-btn" id="userBtn" type="button" aria-label="アカウント">
+        <span id="userAvatar">👤</span><span id="userName" class="user-name">ログイン</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main id="app" class="wrap" aria-live="polite"></main>
+
+<footer class="foot">
+  <p><b>GamePita</b> ― 自分に合うゲームを、ピタっと見つける。</p>
+  <p class="small">記事は利用者が書いたものです。問題のある記事は「通報」からお知らせください。
+    画像・動画は外部サイトのものを表示しています。</p>
+  <p class="small">ログイン: かるわかGAMESアカウント ／ <span class="ver">v1.0.0</span> ／ <a href="#/rules">投稿のルール</a></p>
+</footer>
+
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-box" id="modalBox"></div>
+</div>
+<div id="toast" class="toast hidden" role="status"></div>
+
+<script src="app.js?v=1.0.0"></script>
+</body>
+</html>
