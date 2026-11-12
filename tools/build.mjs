@@ -2,7 +2,7 @@
 // Supabase の gp_export（公開中の記事だけ）を読み、/blog/123/ などのページと sitemap.xml を _site に書き出す。
 // 使い方: node tools/build.mjs   （環境変数 BASE=/gamepita/ SITE=https://kaikomziu.github.io/gamepita/ OUT=_site）
 // 記事の取得に失敗したら終了コード 1 で止まる（GitHub Actions は公開を中止し、前の版がそのまま残る）。
-import { readFile, writeFile, mkdir, copyFile, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, copyFile, rm, cp } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -10,7 +10,7 @@ import { createRequire } from 'node:module';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const R = require(join(ROOT, 'render.js'));
-const { esc, GENRES, GENRE_EMOJI, GENRE_SLUG, plainText, safeUrl, postUrl, genreUrl, userUrl } = R;
+const { esc, GENRES, GENRE_EMOJI, GENRE_SLUG, plainText, safeUrl, postUrl, genreUrl, userUrl, gameUrl, typeUrl, TYPES, similarScore } = R;
 
 const BASE = process.env.BASE || '/gamepita/';
 const SITE = (process.env.SITE || 'https://kaikomziu.github.io/gamepita/').replace(/\/?$/, '/');
@@ -81,7 +81,8 @@ async function write(path, html) {
 const posts = await fetchPosts();
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
-for (const f of ['style.css', 'app.js', 'render.js', 'icon.svg', 'ogp.png']) await copyFile(join(ROOT, f), join(OUT, f));
+for (const f of ['style.css', 'app.js', 'render.js', 'theme.js', 'icon.svg', 'ogp.png']) await copyFile(join(ROOT, f), join(OUT, f));
+await cp(join(ROOT, 'ogp'), join(OUT, 'ogp'), { recursive: true });
 
 const sitemap = []; // [url, lastmod]
 const latest = d => d.reduce((a, p) => (p.updated_at > a ? p.updated_at : a), '');
@@ -115,6 +116,13 @@ await write(`${BASE}blog/`, page(
     `<li><a href="${esc(postUrl(BASE, p.id))}">${esc(p.title)}（${esc(p.game)}）</a></li>`).join('')}</ul></section>` : ''}`));
 sitemap.push([abs(`${BASE}blog/`), latest(posts)]);
 
+// 似ている記事（DB の gp_similar と同じ計算）
+function similarHtml(p) {
+  const list = posts.filter(q => q.id !== p.id).map(q => [similarScore(q, p), q]).filter(([sc]) => sc >= 3)
+    .sort((a, b) => b[0] - a[0] || b[1].id - a[1].id).slice(0, 4).map(([, q]) => q);
+  return list.length ? `<section class="similar"><h2 class="section-title">🧩 このゲームが好きなら、これも</h2>${grid(list)}</section>` : '';
+}
+
 // 記事
 for (const p of posts) {
   const path = postUrl(BASE, p.id);
@@ -133,6 +141,7 @@ for (const p of posts) {
       reviewRating: { '@type': 'Rating', ratingValue: p.rating, bestRating: 5, worstRating: 1 },
     }, crumbsLd([['トップ', BASE], ['ブログ', `${BASE}blog/`], [p.genre, genreUrl(BASE, p.genre)], [p.title, path]])] }),
     `<article class="article">${R.coverHtml(p)}<div class="article-in">${R.articleInner(p, BASE)}</div></article>
+    ${similarHtml(p)}
     <section class="comments"><h2>💬 コメント</h2>${loading}</section>`));
   sitemap.push([abs(path), p.updated_at]);
 }
@@ -165,12 +174,53 @@ for (const [u, list] of authors) {
   sitemap.push([abs(path), latest(list)]);
 }
 
+// ゲームのまとめページ
+const games = new Map();
+for (const p of posts) if (p.game_id) { if (!games.has(p.game_id)) games.set(p.game_id, []); games.get(p.game_id).push(p); }
+for (const [gid, list] of games) {
+  const name = list[0].game_name || list[0].game;
+  const path = gameUrl(BASE, gid);
+  const avg = (list.reduce((a, p) => a + Number(p.rating), 0) / list.length).toFixed(1);
+  const plats = [...new Set(list.flatMap(p => p.platforms || []))];
+  const genres = [...new Set(list.map(p => p.genre))];
+  await write(path, page(
+    head({ title: `${name}の評価・紹介記事まとめ`, desc: `${name}の紹介記事 ${list.length} 件・平均おすすめ度 ★${avg}。みんなの感想から、${name}が自分に合うかチェックしよう。`,
+      path, image: list.map(p => p.cover_url && safeUrl(p.cover_url)).find(Boolean) || null, jsonld: [{
+        '@context': 'https://schema.org', '@type': 'VideoGame', name, url: abs(path), genre: genres, gamePlatform: plats,
+        applicationCategory: 'Game', operatingSystem: plats.join(', '),
+        aggregateRating: { '@type': 'AggregateRating', ratingValue: Number(avg), reviewCount: list.length, bestRating: 5, worstRating: 1 },
+      }, crumbsLd([['トップ', BASE], ['ブログ', `${BASE}blog/`], [name, path]])] }),
+    `<section class="game-head"><div>${genres.map(g => `<a class="genre-badge" href="${esc(genreUrl(BASE, g))}">${esc(g)}</a>`).join(' ')}</div>
+      <h1>🎮 ${esc(name)}</h1><div class="game-stats"><span>おすすめ度 <b>${R.stars(Math.round(Number(avg)))} ${avg}</b></span>
+      <span>紹介記事 <b>${list.length}</b> 件</span><span>機種 <b>${plats.map(esc).join('・')}</b></span></div></section>
+    <h2 class="section-title">📝 ${esc(name)}の紹介記事</h2>${grid(list.slice(0, 50))}`));
+  sitemap.push([abs(path), latest(list)]);
+}
+
+// 診断タイプ（シェアされたときの画像・説明つきページ）
+const typeLinks = t0 => `<div class="type-list">${TYPES.filter(x => x !== t0).map(x => `<a class="chip" href="${esc(typeUrl(BASE, x.slug))}">${x.e} ${esc(x.name)}</a>`).join('')}</div>`;
+await write(`${BASE}shindan/type/`, page(
+  head({ title: 'ピタっと診断のタイプ一覧', desc: 'ピタっと診断でわかる8つのゲーマータイプの一覧です。あなたはどのタイプ？', path: `${BASE}shindan/type/` }),
+  `<h1 class="page-title">🧩 ピタっと診断のタイプ一覧</h1>${typeLinks(null)}`));
+sitemap.push([abs(`${BASE}shindan/type/`), '']);
+for (const t of TYPES) {
+  const path = typeUrl(BASE, t.slug);
+  await write(path, page(
+    head({ title: `${t.name}｜ピタっと診断`, desc: `${t.e}${t.name}：${t.desc}`, path, image: `${SITE}ogp/type-${t.slug}.png`,
+      jsonld: [crumbsLd([['トップ', BASE], ['ピタっと診断', `${BASE}shindan/`], [t.name, path]])] }),
+    `<section class="type-card"><div class="tl">ピタっと診断のタイプ</div><div class="te">${t.e}</div><h1>${esc(t.name)}</h1><p>${esc(t.desc)}</p></section>
+    <div class="more"><a class="btn btn-primary" href="${BASE}shindan/">🧩 自分も診断してみる</a></div>
+    <h2 class="section-title">ほかのタイプ</h2>${typeLinks(t)}`));
+  sitemap.push([abs(path), '']);
+}
+
 // 中身は app.js が作るページ
 const shells = [
   [`${BASE}shindan/`, { title: 'ピタっと診断（自分に合うゲームがわかる）', desc: '6つの質問に答えるだけで、みんなのゲーム紹介記事の中から、あなたにピタっと合うゲームを相性つきでおすすめします。' }, true],
   [`${BASE}rules/`, { title: '投稿のルール・本文の書き方', desc: 'GamePita に記事やコメントを書くときのルールと、本文の書き方（見出し・太字・画像・YouTube の埋め込み）です。' }, true],
   [`${BASE}new/`, { title: '記事を書く', noindex: true }, false],
   [`${BASE}admin/`, { title: '管理', noindex: true }, false],
+  [`${BASE}mylist/`, { title: 'マイリスト', noindex: true }, false],
 ];
 for (const [path, h, inMap] of shells) {
   await write(path, page(head({ ...h, path }), loading));

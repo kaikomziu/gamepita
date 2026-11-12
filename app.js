@@ -3,14 +3,15 @@
 // URL は /blog/123/ のような本物のパス（History API）。公開ページは tools/build.mjs が静的 HTML も作る。
 (() => {
   'use strict';
-  const VERSION = '1.1.0';
+  const VERSION = '1.2.0';
   const SUPABASE_URL = 'https://kifnzvktwbomxthzvvgy.supabase.co';
   // 公開用キー（ブラウザに置いてよいキー。テーブルは RLS で閉じていて RPC しか呼べない）
   const SUPABASE_KEY = 'sb_publishable_Ea_sHRg6wMwO9YkDTjgOog_stQT1mfq';
   const HEADERS = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
   const R = window.GPRender;
   const { GENRES, GENRE_EMOJI, GENRE_SLUG, SLUG_GENRE, PLATFORMS, PLAYERS, LENGTHS, DIFFS, PRICES,
-    esc, fmtDate, safeUrl, youtubeId, isImageUrl, renderBody, plainText, userUrl, genreUrl, postUrl } = R;
+    esc, fmtDate, safeUrl, youtubeId, isImageUrl, renderBody, plainText, userUrl, genreUrl, postUrl,
+    MARKS, TYPES, typeOf, gameUrl, typeUrl, badgesHtml } = R;
   // サイトの根元（例 "/gamepita/"）と公開 URL（canonical・共有用）
   const me$ = document.currentScript;
   const BASE = (me$ && me$.dataset.base) || '/';
@@ -94,13 +95,34 @@
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     const a = e.target.closest('a[href]');
     if (!a || a.target || a.hasAttribute('download') || a.origin !== location.origin || !a.pathname.startsWith(BASE)) return;
-    // サイトの中のファイル（sitemap.xml など）は普通に開く
+    // サイトの中のファイル（sitemap.xml など）と、同じページ内の目次リンクは普通に開く
     if (/\.[a-z0-9]+$/i.test(a.pathname)) return;
+    if (a.hash && a.pathname === location.pathname && a.search === location.search) return;
     e.preventDefault();
     if (a.hasAttribute('data-close')) closeModal();
     go(a.pathname + a.search);
   });
   window.addEventListener('popstate', route);
+
+  // ---------- ネタバレ（タップで表示） ----------
+  document.addEventListener('click', e => { const sp = e.target.closest('.spoiler'); if (sp) sp.classList.toggle('open'); });
+  document.addEventListener('keydown', e => {
+    const sp = e.target.closest && e.target.closest('.spoiler');
+    if (sp && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); sp.classList.toggle('open'); }
+  });
+
+  // ---------- ダークモード ----------
+  const darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+  const isDark = () => { const t = document.documentElement.getAttribute('data-theme'); return t ? t === 'dark' : darkMq.matches; };
+  const themeIcon = () => { const b = $('themeBtn'); b.textContent = isDark() ? '☀️' : '🌙'; b.setAttribute('aria-label', isDark() ? 'ライトモードにする' : 'ダークモードにする'); };
+  $('themeBtn').addEventListener('click', () => {
+    const next = isDark() ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('gp_theme', next); } catch { /* 保存できなくても切りかえだけはする */ }
+    themeIcon();
+  });
+  darkMq.addEventListener?.('change', themeIcon);
+  themeIcon();
 
   // ---------- 画像が読めなかったら隠す（インラインの onerror は CSP で使えないのでまとめて拾う） ----------
   document.addEventListener('error', e => {
@@ -117,6 +139,37 @@
     if (!token()) { me = null; return; }
     try { const r = await rpc('gp_me', { p_token: token() }); me = r.ok ? r : null; } catch { /* 通信失敗時はそのまま */ }
   }
+  // ---------- 通知（自分の記事へのコメント・ピタっと！） ----------
+  let notifs = null;
+  async function loadNotifs() {
+    if (!token()) { notifs = null; drawBell(); return; }
+    try { const r = await rpc('gp_notifs', { p_token: token() }); notifs = r.ok ? r : null; } catch { /* 次の機会に */ }
+    drawBell();
+  }
+  function drawBell() {
+    $('bellBtn').classList.toggle('hidden', !token());
+    const n = notifs ? Number(notifs.unread) : 0;
+    $('bellN').textContent = n > 99 ? '99+' : String(n);
+    $('bellN').classList.toggle('hidden', !n);
+  }
+  $('bellBtn').addEventListener('click', async () => {
+    if (!token()) return;
+    if (!notifs) await loadNotifs();
+    const items = notifs?.items || [];
+    openModal(`<h2>🔔 通知</h2><div class="notif-list">${items.length ? items.map(x => `
+        <a class="notif ${x.unread ? 'unread' : ''}" href="${esc(postUrl(BASE, x.post_id))}" data-close>
+          ${esc(x.who?.avatar || '😀')} <b>${esc(x.who?.display_name || x.who?.username || 'だれか')}</b> さんが
+          ${x.kind === 'comment' ? '💬 コメントしました' : '🧩 ピタっと！しました'}
+          <span class="small">「${esc(x.post_title || '')}」・${esc(ago(x.at))}</span>
+          ${x.body ? `<span class="small">${esc(x.body)}</span>` : ''}</a>`).join('')
+      : '<p class="small">まだ通知はありません。記事にコメントやピタっと！がつくと、ここに届きます。</p>'}</div>
+      <div class="form-actions"><button class="btn btn-ghost" type="button" data-close>閉じる</button></div>`);
+    if (notifs && Number(notifs.unread)) {
+      try { await rpc('gp_notif_seen', { p_token: token() }); notifs.unread = 0; notifs.items.forEach(x => { x.unread = false; }); drawBell(); } catch { /* 次に開いたとき */ }
+    }
+  });
+  setInterval(() => { if (!document.hidden && token()) loadNotifs(); }, 60000);
+
   function updateHeader() {
     const u = ka?.user();
     $('userAvatar').textContent = u?.avatar || (u ? '😀' : '👤');
@@ -136,6 +189,7 @@
     openModal(`<h2>${esc(u.avatar || '😀')} ${esc(u.display_name || u.username)}</h2>
       <div style="display:grid;gap:8px">
         <a class="btn" href="${esc(userUrl(BASE, u.username))}" data-close>📝 自分の記事</a>
+        <a class="btn" href="${BASE}mylist/" data-close>📋 マイリスト（気になる・遊んだ！）</a>
         <button class="btn" type="button" id="mAccount">⚙️ アカウント設定・ログアウト</button>
         ${me?.is_admin ? `<a class="btn" href="${BASE}admin/" data-close>🛡️ 管理（通報）</a>` : ''}
         <button class="btn btn-ghost" type="button" data-close>閉じる</button>
@@ -173,6 +227,26 @@
         closeModal(); toast('通報しました。ご協力ありがとうございます。');
       } catch { toast('送れませんでした。通信を確かめてください。'); }
     };
+  }
+
+  // ---------- 遊んだ！・気になる ----------
+  function marksHtml(gameId, my, counts) {
+    return `<div class="marks" data-game="${Number(gameId)}"><span class="label">このゲーム:</span>
+      ${Object.entries(MARKS).map(([k, m]) => `<button class="btn btn-sm mark-btn ${my === k ? 'on' : ''}" type="button" data-mark="${k}" aria-pressed="${my === k}">${m.e} ${esc(m.t)}${counts ? ` <span class="small">${Number(counts[k]) || 0}</span>` : ''}</button>`).join('')}
+      <a class="small" href="${BASE}mylist/">マイリスト ›</a></div>`;
+  }
+  function bindMarks(root) {
+    root.querySelectorAll('.marks').forEach(box => box.addEventListener('click', async e => {
+      const b = e.target.closest('[data-mark]'); if (!b) return;
+      if (!(await requireLogin())) return;
+      const status = b.classList.contains('on') ? null : b.dataset.mark;
+      try {
+        const r = await rpc('gp_mark_set', { p_token: token(), p_game_id: Number(box.dataset.game), p_status: status });
+        if (!r.ok) { toast(reasonText(r.reason)); return; }
+        box.querySelectorAll('[data-mark]').forEach(x => { const on = x.dataset.mark === status; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
+        toast(status ? `${MARKS[status].e} 「${MARKS[status].t}」に入れました` : 'マイリストから外しました');
+      } catch { toast('通信できませんでした'); }
+    }));
   }
 
   // ---------- トップ ----------
@@ -297,6 +371,7 @@
         <div class="article-in">
           ${p.status === 'removed' ? '<div class="removed-note">この記事は管理者により非表示になっています（管理者だけに見えています）。</div>' : ''}
           ${R.articleInner(p, BASE)}
+          ${p.game_id ? marksHtml(p.game_id, p.my_mark) : ''}
           <div class="actions">
             <button class="btn pita ${p.liked ? 'on' : ''}" type="button" id="pitaBtn" aria-pressed="${p.liked ? 'true' : 'false'}">🧩 ピタっと！ <b id="pitaN">${Number(p.likes) || 0}</b></button>
             <button class="btn btn-sm" type="button" id="copyBtn">🔗 リンクをコピー</button>
@@ -308,6 +383,7 @@
           </div>
         </div>
       </article>
+      <section class="similar" id="similar"></section>
       <section class="comments">
         <h2>💬 コメント（${r.comments.length}）</h2>
         <div id="commentList">${r.comments.length ? r.comments.map(commentHtml).join('') : '<p class="small">まだコメントはありません。</p>'}</div>
@@ -318,6 +394,11 @@
       </section>
       <p style="text-align:center;margin-top:18px"><a href="${BASE}blog/">← ブログ一覧へ</a></p>`;
 
+    bindMarks(app);
+    rpc('gp_similar', { p_id: p.id }).then(list => {
+      const el = $('similar'); if (!el || !list.length) return;
+      el.innerHTML = `<h2 class="section-title">🧩 このゲームが好きなら、これも</h2><div class="grid">${list.map(card).join('')}</div>`;
+    }).catch(() => { /* 出せなくても記事は読める */ });
     $('pitaBtn').addEventListener('click', async () => {
       if (!(await requireLogin())) return;
       try {
@@ -402,7 +483,9 @@
         <h1>${editId ? '✏️ 記事を編集' : '✏️ 好きなゲームを紹介する'}</h1>
         <div class="row2">
           <div class="field"><label for="fGame">ゲーム名 <span class="hint">必須・60文字まで</span></label>
-            <input type="text" id="fGame" maxlength="60" value="${esc(data.game)}" placeholder="例: マインクラフト"></div>
+            <input type="text" id="fGame" maxlength="60" value="${esc(data.game)}" placeholder="例: マインクラフト" list="gameList" autocomplete="off">
+            <datalist id="gameList"></datalist>
+            <span class="small">同じゲームの記事は自動でまとめられます。候補が出たら選んでね。</span></div>
           <div class="field"><label for="fTitle">記事のタイトル <span class="hint">必須・60文字まで</span></label>
             <input type="text" id="fTitle" maxlength="60" value="${esc(data.title)}" placeholder="例: 建築好きにはたまらない自由さ！"></div>
         </div>
@@ -449,6 +532,18 @@
         <p class="small">投稿すると、<a href="${BASE}rules/" target="_blank" rel="noopener">投稿のルール</a>に同意したことになります。</p>
       </form>`;
 
+    // ゲーム名の候補（すでに記事があるゲーム）
+    let sugT = 0;
+    $('fGame').addEventListener('input', () => {
+      clearTimeout(sugT);
+      sugT = setTimeout(async () => {
+        const q = $('fGame').value.trim(); if (!q) return;
+        try {
+          const names = await rpc('gp_game_suggest', { p_q: q });
+          const dl = $('gameList'); if (dl) dl.innerHTML = names.map(n => `<option value="${esc(n)}"></option>`).join('');
+        } catch { /* 候補が出なくても入力はできる */ }
+      }, 250);
+    });
     let rating = data.rating || 0;
     const starBtns = [...$('starInput').querySelectorAll('button')];
     starBtns.forEach(b => b.addEventListener('click', () => { rating = +b.dataset.n; starBtns.forEach(x => x.classList.toggle('on', +x.dataset.n <= rating)); saveDraft(); }));
@@ -572,16 +667,121 @@
       app.innerHTML = '<div class="loading">🧩 ピタっと合うゲームをさがしています…</div>';
       try {
         const r = await rpc('gp_diagnose', { p_answers: ans });
-        app.innerHTML = `<div class="result-head"><h1>🎉 あなたにピタっと合いそうなゲーム</h1>
+        const t = typeOf(ans);
+        app.innerHTML = `${typeCardHtml(t, true)}
+          <div class="result-head"><h2>🎉 あなたにピタっと合いそうなゲーム</h2>
           <p class="small">みんなの紹介記事の中から、答えに近い順に並べました。</p></div>
           ${r.items.length ? `<div class="grid">${r.items.map(card).join('')}</div>`
             : '<div class="empty">ピタっと合う記事がまだ見つかりませんでした…。<br>条件をゆるめてもう一度ためすか、あなたの好きなゲームを紹介してみてください！</div>'}
           <div class="more"><button class="btn" type="button" id="again">🔁 もう一度診断する</button>
           <a class="btn btn-primary" href="${BASE}new/" style="margin-left:8px">✏️ 記事を書く</a></div>`;
         $('again').addEventListener('click', renderShindan);
+        bindShare(t);
       } catch { app.innerHTML = '<div class="empty">診断できませんでした。通信を確かめてください。</div>'; }
     };
     draw();
+  }
+
+  // ---------- 診断タイプ ----------
+  function typeCardHtml(t, mine) {
+    const url = abs(typeUrl(BASE, t.slug));
+    const text = mine ? `わたしは「${t.e}${t.name}」でした！ #GamePita診断` : `${t.e}${t.name}｜GamePita ピタっと診断`;
+    return `<section class="type-card">
+        <div class="tl">${mine ? 'あなたは…' : 'ピタっと診断のタイプ'}</div>
+        <div class="te">${t.e}</div>
+        <h1>${esc(t.name)}</h1>
+        <p>${esc(t.desc)}</p>
+      </section>
+      <div class="share">
+        <a class="btn btn-sm" target="_blank" rel="noopener noreferrer" href="https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}">𝕏 結果をポスト</a>
+        <a class="btn btn-sm" target="_blank" rel="noopener noreferrer" href="https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(url)}">💬 LINEで送る</a>
+        <button class="btn btn-sm hidden" type="button" id="shareBtn">📤 シェア</button>
+        <a class="btn btn-sm" href="${BASE}ogp/type-${t.slug}.png" download="gamepita-${t.slug}.png">🖼️ 画像を保存</a>
+        <button class="btn btn-sm" type="button" id="copyType">🔗 リンクをコピー</button>
+      </div>`;
+  }
+  function bindShare(t) {
+    const url = abs(typeUrl(BASE, t.slug));
+    const sb = $('shareBtn');
+    if (sb && navigator.share) {
+      sb.classList.remove('hidden');
+      sb.addEventListener('click', () => navigator.share({ title: `${t.e}${t.name}｜GamePita`, text: `わたしは「${t.e}${t.name}」でした！`, url }).catch(() => {}));
+    }
+    $('copyType')?.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(url); toast('リンクをコピーしました'); } catch { toast(url); }
+    });
+  }
+  async function renderType(slug) {
+    const t = TYPES.find(x => x.slug === slug);
+    if (!t) { renderNotFound(); return; }
+    setMeta({ title: `${t.name}｜ピタっと診断`, desc: `${t.e}${t.name}：${t.desc}`, path: typeUrl(BASE, t.slug) });
+    app.innerHTML = `${typeCardHtml(t, false)}
+      <div class="more"><a class="btn btn-primary" href="${BASE}shindan/">🧩 自分も診断してみる</a></div>
+      <h2 class="section-title">🎮 ${esc(t.name)}におすすめのゲーム</h2>
+      <div class="grid" id="typeList"><div class="loading">読み込み中…</div></div>
+      <h2 class="section-title">ほかのタイプ</h2>
+      <div class="type-list">${TYPES.filter(x => x.slug !== t.slug).map(x => `<a class="chip" href="${esc(typeUrl(BASE, x.slug))}">${x.e} ${esc(x.name)}</a>`).join('')}</div>`;
+    bindShare(t);
+    try {
+      const r = await rpc('gp_diagnose', { p_answers: { ...t.ans, genres: [], platforms: [], price: 'any' } });
+      const el = $('typeList'); if (!el) return;
+      el.innerHTML = r.items.length ? r.items.map(card).join('') : '<div class="empty" style="grid-column:1/-1">まだおすすめできる記事がありません。</div>';
+    } catch { const el = $('typeList'); if (el) el.innerHTML = ''; }
+  }
+  function renderTypeList() {
+    setMeta({ title: 'ピタっと診断のタイプ一覧', desc: 'ピタっと診断でわかる8つのゲーマータイプの一覧です。あなたはどのタイプ？', path: `${BASE}shindan/type/` });
+    app.innerHTML = `<h1 class="page-title">🧩 ピタっと診断のタイプ一覧</h1>
+      <p class="small">遊び方（ひとり／みんな）× 時間（すきま／じっくり）× 難しさ（やさしい／歯ごたえ）で8タイプに分かれます。</p>
+      <div class="type-list">${TYPES.map(x => `<a class="chip" href="${esc(typeUrl(BASE, x.slug))}">${x.e} ${esc(x.name)}</a>`).join('')}</div>
+      <div class="more"><a class="btn btn-primary" href="${BASE}shindan/">🧩 診断する</a></div>`;
+  }
+
+  // ---------- ゲームのまとめページ ----------
+  async function renderGame(id) {
+    app.innerHTML = '<div class="loading">読み込み中…</div>';
+    let r;
+    try { r = await rpc('gp_game', { p_token: token(), p_id: id }); } catch { app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; return; }
+    if (!r.ok) { setMeta({ title: 'ゲームが見つかりません', noindex: true, path: gameUrl(BASE, id) }); app.innerHTML = `<div class="empty">${esc(reasonText(r.reason))}<br><a href="${BASE}blog/">ブログ一覧へ</a></div>`; return; }
+    const g = r.game;
+    setMeta({ title: `${g.name}の評価・紹介記事まとめ`, desc: `${g.name}の紹介記事 ${r.count} 件・平均おすすめ度 ★${r.avg}。みんなの感想から、${g.name}が自分に合うかチェックしよう。`, path: gameUrl(BASE, g.id) });
+    app.innerHTML = `<section class="game-head">
+        <nav class="crumbs"><a href="${BASE}">トップ</a> › <a href="${BASE}blog/">ブログ</a> › ゲーム</nav>
+        <div>${(r.genres || []).map(x => `<a class="genre-badge" href="${esc(genreUrl(BASE, x))}">${esc(x)}</a>`).join(' ')}</div>
+        <h1>🎮 ${esc(g.name)}</h1>
+        <div class="game-stats"><span>おすすめ度 <b>${R.stars(Math.round(Number(r.avg) || 0))} ${esc(String(r.avg))}</b></span>
+          <span>紹介記事 <b>${Number(r.count)}</b> 件</span><span>機種 <b>${(r.platforms || []).map(esc).join('・')}</b></span></div>
+        ${marksHtml(g.id, r.my_mark, r.marks)}
+      </section>
+      <h2 class="section-title">📝 ${esc(g.name)}の紹介記事</h2>
+      <div class="grid">${r.posts.map(card).join('')}</div>
+      <div class="more"><a class="btn btn-primary" href="${BASE}new/">✏️ このゲームの記事を書く</a></div>`;
+    bindMarks(app);
+  }
+
+  // ---------- マイリスト ----------
+  async function renderMylist() {
+    setMeta({ title: 'マイリスト', noindex: true, path: `${BASE}mylist/` });
+    if (!token()) {
+      app.innerHTML = `<div class="empty">マイリストを使うには、ログインしてください。<br>
+        <button class="btn btn-primary" type="button" id="loginGo" style="margin-top:12px">ログイン / 新規登録</button></div>`;
+      $('loginGo').onclick = async () => { if (await requireLogin()) route(); };
+      return;
+    }
+    app.innerHTML = '<div class="loading">読み込み中…</div>';
+    let r;
+    try { r = await rpc('gp_my_marks', { p_token: token() }); } catch { app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; return; }
+    if (!r.ok) { app.innerHTML = `<div class="empty">${esc(reasonText(r.reason))}</div>`; return; }
+    const tab = new URLSearchParams(location.search).get('s');
+    const cur = MARKS[tab] ? tab : '';
+    const items = r.items.filter(x => !cur || x.status === cur);
+    app.innerHTML = `<h1 class="page-title">📋 マイリスト</h1>
+      <p class="small">記事やゲームのページで「気になる・プレイ中・遊んだ！」を押すと、ここにたまります（自分だけが見られます）。</p>
+      <div class="mylist-tabs"><a class="chip ${cur ? '' : 'on'}" href="${BASE}mylist/">すべて ${r.items.length}</a>
+        ${Object.entries(MARKS).map(([k, m]) => `<a class="chip ${cur === k ? 'on' : ''}" href="${BASE}mylist/?s=${k}">${m.e} ${esc(m.t)} ${r.items.filter(x => x.status === k).length}</a>`).join('')}</div>
+      ${items.length ? `<div class="mini-list">${items.map(x => `<a class="mini" href="${esc(gameUrl(BASE, x.game_id))}">
+          ${R.coverHtml({ genre: x.genre, cover_url: x.cover_url, game: x.name })}
+          <div><b>${esc(x.name)}</b><div class="small">${MARKS[x.status].e} ${esc(MARKS[x.status].t)} ／ 記事 ${Number(x.count)} 件${x.avg ? ` ／ ★${esc(String(x.avg))}` : ''}</div></div></a>`).join('')}</div>`
+        : '<div class="empty">まだ何も入っていません。気になるゲームの記事で「👀 気になる」を押してみよう！</div>'}`;
   }
 
   // ---------- プロフィール ----------
@@ -595,7 +795,8 @@
       const name = a.display_name || a.username;
       setMeta({ title: `${name} さんのゲーム紹介記事`, desc: `${name} さんが GamePita に書いたゲーム紹介記事の一覧です。`, path: userUrl(BASE, a.username), noindex: Number(pr.posts) === 0 });
       app.innerHTML = `<section class="profile"><div class="av">${esc(a.avatar || '😀')}</div>
-        <div><h1>${esc(name)}</h1><div class="small">@${esc(a.username)} ／ 記事 ${Number(pr.posts)} 件 ／ もらったピタっと！ ${Number(pr.likes)}</div></div></section>
+        <div><h1>${esc(name)}</h1><div class="small">@${esc(a.username)} ／ 記事 ${Number(pr.posts)} 件 ／ もらったピタっと！ ${Number(pr.likes)}</div>
+        ${pr.badges?.length ? `<div class="badges" style="margin-top:6px">${badgesHtml(pr.badges)}</div>` : ''}</div></section>
         <div class="grid">${list.items.length ? list.items.map(card).join('') : '<div class="empty" style="grid-column:1/-1">まだ記事がありません。</div>'}</div>
         ${list.more ? '<p class="small" style="text-align:center">最新の24件を表示しています。</p>' : ''}`;
     } catch { app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; }
@@ -609,7 +810,15 @@
     try {
       const r = await rpc('gp_admin_reports', { p_token: token() });
       if (!r.ok) { app.innerHTML = `<div class="empty">${esc(reasonText(r.reason))}</div>`; return; }
-      app.innerHTML = `<h1 class="page-title">🛡️ 通報の一覧（${r.reports.length}）</h1>
+      let writers = [];
+      try { const w = await rpc('gp_admin_writers', { p_token: token() }); if (w.ok) writers = w.writers; } catch { /* 表示だけ省く */ }
+      app.innerHTML = `<h1 class="page-title">🛡️ 管理</h1>
+        <section class="report-item"><h2 style="margin:0 0 8px;font-size:1.05rem">👑 公認ライター</h2>
+          <div class="badges" style="margin-bottom:8px">${writers.length ? writers.map(x => `<span class="badge">${esc(x.avatar || '😀')} ${esc(x.display_name || x.username)}（@${esc(x.username)}）</span>`).join('') : '<span class="small">まだいません</span>'}</div>
+          <form id="offForm" class="comment-form"><input type="text" id="offUser" maxlength="40" placeholder="ユーザー名（@のあと）">
+            <button class="btn btn-sm btn-primary" type="submit" data-on="1">公認にする</button>
+            <button class="btn btn-sm" type="submit" data-on="0">公認を外す</button></form></section>
+        <h2 class="section-title">🚩 通報の一覧（${r.reports.length}）</h2>
         ${r.reports.length ? r.reports.map(x => `<div class="report-item">
           <div class="small">${esc(fmtDate(x.created_at))} ／ ${x.target === 'post' ? '記事' : 'コメント'} ／ 通報者: ${esc(x.reporter?.display_name || '?')}</div>
           <div><b>${esc(x.text ?? '（消えています）')}</b></div>
@@ -619,6 +828,15 @@
             <button class="btn btn-sm btn-danger" type="button" data-rm="${esc(x.target)}:${Number(x.target_id)}">${x.target === 'post' ? '記事を非表示' : 'コメントを削除'}</button>
             <button class="btn btn-sm" type="button" data-dismiss="${Number(x.id)}">問題なし（片づける）</button>
           </div></div>`).join('') : '<div class="empty">通報はありません。</div>'}`;
+      $('offForm').addEventListener('submit', async e => {
+        e.preventDefault();
+        const on = (e.submitter || {}).dataset?.on === '1';
+        try {
+          const x = await rpc('gp_admin_set_official', { p_token: token(), p_username: $('offUser').value.trim().replace(/^@/, ''), p_on: on });
+          if (!x.ok) { toast(x.reason === 'not_found' ? 'そのユーザーは見つかりません' : reasonText(x.reason)); return; }
+          toast(on ? '公認ライターにしました' : '公認を外しました'); renderAdmin();
+        } catch { toast('通信できませんでした'); }
+      });
       app.querySelectorAll('[data-dismiss]').forEach(b => b.addEventListener('click', async () => {
         try { const x = await rpc('gp_admin_dismiss', { p_token: token(), p_report_id: Number(b.dataset.dismiss) }); if (!x.ok) toast(reasonText(x.reason)); }
         catch { toast('通信できませんでした'); }
@@ -656,6 +874,8 @@
         <li><code>**太字**</code> … <strong>太字</strong>になります</li>
         <li>URL だけの行 … 画像（.png .jpg など）は画像、YouTube は動画、それ以外はリンクカードとして表示</li>
         <li><code>画像: https://…</code> … 拡張子がない URL でも画像として表示</li>
+        <li><code>||ネタバレ||</code> … タップするまで見えない「ネタバレ」になります</li>
+        <li>見出しが3つ以上あると、記事の最初に目次が自動でつきます</li>
       </ul>
       <p class="small">安全のため、使える URL は https:// で始まるものだけです。HTML は使えません（文字としてそのまま表示されます）。</p>
       <p><a href="${BASE}">← トップへ</a></p></section>`;
@@ -696,6 +916,10 @@
     else if ((m = rel.match(/^genre\/([a-z-]{2,20})\/?$/)) && SLUG_GENRE[m[1]]) renderList(SLUG_GENRE[m[1]]);
     else if (/^new\/?$/.test(rel)) renderEditor(null);
     else if (/^shindan\/?$/.test(rel)) renderShindan();
+    else if (/^shindan\/type\/?$/.test(rel)) renderTypeList();
+    else if ((m = rel.match(/^shindan\/type\/([a-z-]{5,30})\/?$/))) renderType(m[1]);
+    else if ((m = rel.match(/^game\/(\d{1,15})\/?$/))) renderGame(Number(m[1]));
+    else if (/^mylist\/?$/.test(rel)) renderMylist();
     else if ((m = rel.match(/^user\/([^/]{1,64})\/?$/))) { let u; try { u = decodeURIComponent(m[1]); } catch { u = ''; } renderProfile(u); }
     else if (/^admin\/?$/.test(rel)) renderAdmin();
     else if (/^rules\/?$/.test(rel)) renderRules();
@@ -705,11 +929,11 @@
   (async () => {
     updateHeader();
     route();
-    await loadMe(); updateHeader();
+    await Promise.all([loadMe(), loadNotifs()]); updateHeader();
     if (/\/admin\/?$/.test(location.pathname)) route();
     // ログイン・ログアウトしたら読み直す（書きかけの記事がある画面はそのまま）
     ka?.onChange(async () => {
-      await loadMe(); updateHeader();
+      await Promise.all([loadMe(), loadNotifs()]); updateHeader();
       if (!$('postForm')) route();
     });
   })();

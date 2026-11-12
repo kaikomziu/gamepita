@@ -24,6 +24,34 @@
   const LENGTHS = { short: 'すきま時間', long: 'じっくり', both: 'どちらも' };
   const DIFFS = { easy: 'やさしい', normal: 'ふつう', hard: 'むずかしい' };
   const PRICES = { free: '無料（基本無料）', paid: '有料' };
+  const MARKS = { want: { e: '👀', t: '気になる' }, playing: { e: '🎮', t: 'プレイ中' }, done: { e: '🏁', t: '遊んだ！' } };
+
+  // ピタっと診断のタイプ（遊び方 × 時間 × 難しさ の8種類）。画像は ogp/type-<slug>.png
+  const TYPES = [
+    { slug: 'solo-short-easy', e: '🌱', name: 'ゆるっとひとり時間タイプ', ans: { players: 'solo', length: 'short', difficulty: 'easy' },
+      desc: 'すきま時間に、ひとりでのんびり遊ぶのが好きなあなた。むずかしすぎず、すぐ始めてすぐやめられるゲームがピタっと合います。' },
+    { slug: 'solo-short-hard', e: '⚡', name: 'ひとりで腕だめしタイプ', ans: { players: 'solo', length: 'short', difficulty: 'hard' },
+      desc: '短い時間でも本気で挑戦したいあなた。1回は短いけど歯ごたえのある、何度もリトライしたくなるゲームがおすすめ。' },
+    { slug: 'solo-long-easy', e: '📖', name: 'じっくり物語ひたりタイプ', ans: { players: 'solo', length: 'long', difficulty: 'easy' },
+      desc: 'ひとりで世界にどっぷりひたりたいあなた。ストーリーや世界観をゆっくり楽しめるゲームがピタっと合います。' },
+    { slug: 'solo-long-hard', e: '🏔️', name: 'やりこみ求道者タイプ', ans: { players: 'solo', length: 'long', difficulty: 'hard' },
+      desc: 'とことんやりこんで、むずかしい壁をこえるのが快感なあなた。長く遊べて手ごわいゲームが向いています。' },
+    { slug: 'multi-short-easy', e: '🎉', name: 'みんなでワイワイタイプ', ans: { players: 'multi', length: 'short', difficulty: 'easy' },
+      desc: '友だちや家族とサクッと盛り上がりたいあなた。ルールがかんたんで、だれでもすぐ遊べるゲームがおすすめ。' },
+    { slug: 'multi-short-hard', e: '🔥', name: '白熱バトルタイプ', ans: { players: 'multi', length: 'short', difficulty: 'hard' },
+      desc: '短い勝負で本気のバトルをしたいあなた。うでが試される対戦ゲームがピタっと合います。' },
+    { slug: 'multi-long-easy', e: '🏕️', name: 'まったり協力タイプ', ans: { players: 'multi', length: 'long', difficulty: 'easy' },
+      desc: 'みんなでのんびり、長い時間いっしょに遊びたいあなた。協力して作ったり冒険したりするゲームがおすすめ。' },
+    { slug: 'multi-long-hard', e: '🛡️', name: '最強チーム攻略タイプ', ans: { players: 'multi', length: 'long', difficulty: 'hard' },
+      desc: '仲間と力を合わせて、むずかしい目標をクリアしたいあなた。チームでじっくり攻略するゲームが向いています。' },
+  ];
+  // 診断の答えからタイプを決める（「どっちでも」はひとり・じっくり・やさしい寄りにする）
+  function typeOf(ans) {
+    const pl = ans.players === 'multi' ? 'multi' : 'solo';
+    const ln = ans.length === 'short' ? 'short' : 'long';
+    const df = ans.difficulty === 'hard' ? 'hard' : 'easy';
+    return TYPES.find(t => t.slug === `${pl}-${ln}-${df}`);
+  }
 
   // ---------- 小物 ----------
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -65,7 +93,8 @@
   function inline(text) {
     const out = []; const re = /https:\/\/[^\s<>"'`\\]+/g; let last = 0, m;
     // URL 以外の部分は必ずエスケープしてから太字だけ変換する
-    const fmt = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    const fmt = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\|\|(.+?)\|\|/g, '<span class="spoiler" tabindex="0" role="button" title="タップでネタバレを表示">$1</span>');
     while ((m = re.exec(text))) {
       let url = m[0];
       const trail = url.match(/[)）。、,.!！?？」』]+$/);
@@ -96,13 +125,13 @@
   }
   function renderBody(src) {
     const lines = String(src || '').replace(/\r\n?/g, '\n').split('\n');
-    const html = []; let para = []; let embeds = 0;
+    const html = []; let para = []; let embeds = 0; const heads = [];
     const flush = () => { if (para.length) { html.push(`<p>${para.map(inline).join('<br>')}</p>`); para = []; } };
     for (const raw of lines) {
       const line = raw.trim();
       if (!line) { flush(); continue; }
       const h = line.match(/^##\s+(.+)$/);
-      if (h) { flush(); html.push(`<h2>${inline(h[1])}</h2>`); continue; }
+      if (h) { flush(); heads.push(h[1]); html.push(`<h2 id="h-${heads.length}">${inline(h[1])}</h2>`); continue; }
       const img = line.match(/^(?:画像|img)\s*[:：]\s*(\S+)$/i);
       const bare = /^https:\/\/\S+$/.test(line);
       if ((img || bare) && embeds < MAX_EMBEDS) {
@@ -112,10 +141,15 @@
       para.push(line);
     }
     flush();
+    // 見出しが3つ以上あれば、先頭に目次をつける
+    if (heads.length >= 3) {
+      html.unshift(`<nav class="toc" aria-label="目次"><b>📑 目次</b><ol>${heads.map((t, i) =>
+        `<li><a href="#h-${i + 1}">${esc(t.replace(/\*\*|\|\|/g, ''))}</a></li>`).join('')}</ol></nav>`);
+    }
     return html.join('\n');
   }
   // 抜粋・説明文用: 書式記号と URL を取った1行の文
-  const plainText = (s, max = 120) => String(s || '').replace(/^##\s+/gm, '').replace(/\*\*/g, '')
+  const plainText = (s, max = 120) => String(s || '').replace(/\|\|.+?\|\|/g, '（ネタバレ）').replace(/^##\s+/gm, '').replace(/\*\*/g, '')
     .replace(/(画像|img)\s*[:：]\s*/gi, '').replace(/https:\/\/\S+/g, '').replace(/\s+/g, ' ').trim().slice(0, max);
 
   // ---------- 部品 ----------
@@ -123,6 +157,9 @@
   const userUrl = (base, username) => `${base}user/${encodeURIComponent(username)}/`;
   const genreUrl = (base, genre) => `${base}genre/${GENRE_SLUG[genre] || 'other'}/`;
   const postUrl = (base, id) => `${base}blog/${Number(id)}/`;
+  const gameUrl = (base, id) => `${base}game/${Number(id)}/`;
+  const typeUrl = (base, slug) => `${base}shindan/type/${slug}/`;
+  const badgesHtml = list => (list || []).map(b => `<span class="badge" title="${esc(b.t)}">${esc(b.e)} ${esc(b.t)}</span>`).join('');
 
   function coverHtml(p) {
     const emoji = GENRE_EMOJI[p.genre] || '🎮';
@@ -158,9 +195,10 @@
     return `
       <nav class="crumbs" aria-label="パンくずリスト"><a href="${esc(base)}">トップ</a> › <a href="${esc(base)}blog/">ブログ</a> ›
         <a href="${esc(genreUrl(base, p.genre))}">${esc(p.genre)}</a></nav>
-      <div class="article-head"><a class="genre-badge" href="${esc(genreUrl(base, p.genre))}">${esc(p.genre)}</a><span>🎮 <b>${esc(p.game)}</b></span></div>
+      <div class="article-head"><a class="genre-badge" href="${esc(genreUrl(base, p.genre))}">${esc(p.genre)}</a>
+        ${p.game_id ? `<a class="game-link" href="${esc(gameUrl(base, p.game_id))}">🎮 <b>${esc(p.game)}</b> の記事をまとめて見る ›</a>` : `<span>🎮 <b>${esc(p.game)}</b></span>`}</div>
       <h1>${esc(p.title)}</h1>
-      <div class="article-head">${authorHtml(base, p.author)}
+      <div class="article-head">${authorHtml(base, p.author)}${p.author_badges && p.author_badges.length ? `<span class="badges">${badgesHtml(p.author_badges)}</span>` : ''}
         <time datetime="${esc(p.created_at)}">${fmtDate(p.created_at)}</time>${edited ? `<span>（${fmtDate(p.updated_at)} 更新）</span>` : ''}</div>
       <dl class="spec">
         <div><dt>おすすめ度</dt><dd>${stars(Number(p.rating) || 0)}</dd></div>
@@ -187,7 +225,17 @@
     return `<div class="chips">${GENRES.map(g => `<a class="chip ${current === g ? 'on' : ''}" href="${esc(genreUrl(base, g))}">${GENRE_EMOJI[g]} ${esc(g)}</a>`).join('')}</div>`;
   }
 
+  // 似ている記事の点数（静的ページ生成用。DB の gp_similar と同じ計算）
+  function similarScore(a, b) {
+    const both = (x, y) => x === y || x === 'both' || y === 'both';
+    return (a.game_id && a.game_id === b.game_id ? 4 : 0) + (a.genre === b.genre ? 3 : 0)
+      + (both(a.players, b.players) ? 1 : 0) + (both(a.length, b.length) ? 1 : 0) + (a.difficulty === b.difficulty ? 1 : 0)
+      + ((a.platforms || []).some(x => (b.platforms || []).includes(x)) ? 1 : 0)
+      + Math.min(2, (a.tags || []).filter(x => (b.tags || []).includes(x)).length);
+  }
+
   return {
+    MARKS, TYPES, typeOf, gameUrl, typeUrl, badgesHtml, similarScore,
     GENRES, GENRE_EMOJI, GENRE_SLUG, SLUG_GENRE, PLATFORMS, PLAYERS, LENGTHS, DIFFS, PRICES,
     esc, fmtDate, stars, safeUrl, youtubeId, isImageUrl, hostOf, renderBody, plainText,
     userUrl, genreUrl, postUrl, coverHtml, authorHtml, cardHtml, articleInner, heroHtml, genreLinksHtml,

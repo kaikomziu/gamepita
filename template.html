@@ -11,6 +11,7 @@
 <meta property="og:locale" content="ja_JP">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#ff4f6b">
+<script src="{{BASE}}theme.js?v={{VER}}"></script>
 <link rel="icon" href="{{BASE}}icon.svg?v={{VER}}" type="image/svg+xml">
 <link rel="stylesheet" href="{{BASE}}style.css?v={{VER}}">
 <script src="https://kaikomziu.github.io/game-links/js/karuwaka-account.js" data-game="gamepita" data-keys="" data-badge="off"></script>
@@ -23,9 +24,11 @@
       <span class="logo-text">Game<b>Pita</b></span>
     </a>
     <nav class="nav">
-      <a href="{{BASE}}blog/" class="nav-link">📚 ブログ</a>
+      <a href="{{BASE}}blog/" class="nav-link" aria-label="ブログ">📚<span class="lbl2"> ブログ</span></a>
       <a href="{{BASE}}shindan/" class="nav-link nav-hide-sm">🧩 ピタっと診断</a>
-      <a href="{{BASE}}new/" class="btn btn-primary btn-sm" id="newBtn">✏️ 記事を書く</a>
+      <a href="{{BASE}}new/" class="btn btn-primary btn-sm" id="newBtn" aria-label="記事を書く">✏️<span class="lbl"> 記事を書く</span></a>
+      <button class="icon-btn hidden" id="bellBtn" type="button" aria-label="通知">🔔<span class="bell-n hidden" id="bellN"></span></button>
+      <button class="icon-btn" id="themeBtn" type="button" aria-label="ダークモード切りかえ">🌙</button>
       <button class="user-btn" id="userBtn" type="button" aria-label="アカウント">
         <span id="userAvatar">👤</span><span id="userName" class="user-name">ログイン</span>
       </button>
@@ -39,7 +42,7 @@
 
 <footer class="foot">
   <p><b>GamePita</b> ― 自分に合うゲームを、ピタっと見つける。</p>
-  <p class="foot-links"><a href="{{BASE}}">トップ</a> ・ <a href="{{BASE}}blog/">ブログ</a> ・ <a href="{{BASE}}shindan/">ピタっと診断</a> ・ <a href="{{BASE}}rules/">投稿のルール</a></p>
+  <p class="foot-links"><a href="{{BASE}}">トップ</a> ・ <a href="{{BASE}}blog/">ブログ</a> ・ <a href="{{BASE}}shindan/">ピタっと診断</a> ・ <a href="{{BASE}}shindan/type/">診断タイプ一覧</a> ・ <a href="{{BASE}}rules/">投稿のルール</a></p>
   <p class="small">記事は利用者が書いたものです。問題のある記事は「通報」からお知らせください。
     画像・動画は外部サイトのものを表示しています。</p>
   <p class="small">ログイン: かるわかGAMESアカウント ／ <span class="ver">v{{VER}}</span></p>
