@@ -175,3 +175,7 @@ update public.gp_posts p set cover_url = 'https://cms-assets.unrealengine.com/cm
 where p.game = 'フォートナイト' and p.ka_id = (select id from public.ka_accounts where username = 'gamepita_ai');
 update public.gp_posts p set cover_url = 'https://www.innersloth.com/wp-content/uploads/2021/06/15player_promo_noText-1024x576.png'
 where p.game = 'Among Us' and p.ka_id = (select id from public.ka_accounts where username = 'gamepita_ai');
+-- Minecraft も公式キーアートに差し替え（運営者の判断。公式壁紙ページは「個人的・非営利の利用」の許可で、公開サイトはグレー。
+--   Usage Guidelines の免責文を本文末に記載。Mojang から求められたらオリジナル画像 covers/ai-minecraft.png に戻す）
+update public.gp_posts p set cover_url = 'https://www.minecraft.net/content/dam/minecraftnet/games/minecraft/key-art/NewKeyArt_Header.jpg'
+where p.game = 'Minecraft' and p.ka_id = (select id from public.ka_accounts where username = 'gamepita_ai');
