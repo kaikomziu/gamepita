@@ -330,3 +330,28 @@ a.genre-badge { text-decoration: none; }
 .linkcard.shop { border-color: var(--accent); }
 .pr-opt { align-items: flex-start; }
 .pr-opt span { white-space: normal; }
+
+/* v1.5 リアクション・あとで読む・ほしい・比較・フォロー・ランキング・お題 */
+.extras { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); display: grid; gap: 8px; }
+.reacts, .extra-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.extras .btn.on, #followBtn.on { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.follow-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
+.cmp-bar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 40; display: flex; align-items: center; gap: 8px;
+  background: var(--card); border: 2px solid var(--accent); border-radius: 999px; padding: 6px 8px 6px 14px; box-shadow: var(--shadow); white-space: nowrap; }
+.cmp-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; background: var(--card); border-radius: 14px; box-shadow: var(--shadow); }
+.cmp-table { border-collapse: collapse; width: 100%; min-width: 520px; }
+.cmp-table th, .cmp-table td { border-bottom: 1px solid var(--line); padding: 10px; text-align: left; vertical-align: top; font-size: .92rem; }
+.cmp-table thead th { width: 30%; }
+.cmp-table thead th:first-child, .cmp-table tbody th { width: 90px; color: var(--sub); font-weight: 700; }
+.cmp-table thead a { display: grid; gap: 6px; text-decoration: none; color: var(--ink); }
+.cmp-table .cover { border-radius: 10px; font-size: 2rem; }
+.cmp-table .off { color: var(--star-off); }
+.rank-wrap { position: relative; }
+.rank-no { position: absolute; z-index: 2; top: 8px; left: 8px; background: var(--card); border-radius: 999px; padding: 2px 10px; font-weight: 800; box-shadow: var(--shadow); }
+.theme-banner { background: linear-gradient(135deg, var(--soft), var(--card)); border: 2px solid var(--accent); border-radius: 14px; padding: 12px 14px; margin: 12px 0; display: grid; gap: 6px; }
+.tb-label { font-size: .8rem; font-weight: 800; color: var(--accent); }
+.tb-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.quick-links { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 12px 0; }
+.mylist-top { margin-bottom: 8px; }
+.danger-text { color: var(--danger); }
+.cmp-spacer { height: 72px; }

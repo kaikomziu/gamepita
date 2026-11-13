@@ -3,7 +3,7 @@
 // URL は /blog/123/ のような本物のパス（History API）。公開ページは tools/build.mjs が静的 HTML も作る。
 (() => {
   'use strict';
-  const VERSION = '1.4.0';
+  const VERSION = '1.5.0';
   const SUPABASE_URL = 'https://kifnzvktwbomxthzvvgy.supabase.co';
   // 公開用キー（ブラウザに置いてよいキー。テーブルは RLS で閉じていて RPC しか呼べない）
   const SUPABASE_KEY = 'sb_publishable_Ea_sHRg6wMwO9YkDTjgOog_stQT1mfq';
@@ -45,6 +45,12 @@
     category: '商品の種類を選んでください。',
     maker: 'メーカー名は40文字までです。',
     price: '参考価格は 0〜10,000,000 円の数字で書いてください（わからなければ空でOK）。',
+    list_full: 'リストがいっぱいです（500件まで）。いらないものを外してください。',
+    self_follow: '自分はフォローできません。',
+    draft_big: '下書きが大きすぎて、アカウントに保存できませんでした（この端末には残っています）。',
+    theme_title: 'お題のタイトルは1〜40文字にしてください。',
+    theme_desc: 'お題の説明は300文字までです。',
+    theme_date: 'お題の期間（開始日・終了日）を正しく入れてください（1年以内）。',
   };
   const reasonText = r => REASONS[r] || 'うまくいきませんでした。もう一度ためしてください。';
 
@@ -159,20 +165,27 @@
     $('bellN').textContent = n > 99 ? '99+' : String(n);
     $('bellN').classList.toggle('hidden', !n);
   }
+  function notifHtml(x) {
+    const who = `${esc(x.who?.avatar || '😀')} <b>${esc(x.who?.display_name || x.who?.username || 'だれか')}</b> さん`;
+    const href = x.kind === 'reply' ? `${BASE}contact/`
+      : x.kind === 'follow' ? (x.who?.username ? userUrl(BASE, x.who.username) : BASE)
+      : x.goods_id ? goodsUrl(BASE, x.goods_id) : postUrl(BASE, x.post_id);
+    const text = {
+      reply: '📮 <b>お問い合わせに返信がありました</b>', follow: `${who}が 👤 あなたをフォローしました`,
+      comment: `${who}が 💬 コメントしました`, like: `${who}が 🧩 ピタっと！しました`,
+      new_post: `${who}が ✏️ 新しい記事を書きました`, new_goods: `${who}が 🛍️ 商品を紹介しました`,
+      admin_post: `🛡️ 新しい記事（${who}）`, admin_goods: `🛡️ 新しい商品紹介（${who}）`,
+    }[x.kind] || '';
+    return `<a class="notif ${x.unread ? 'unread' : ''}" href="${esc(href)}" data-close>${text}
+      <span class="small">${x.post_title ? `「${esc(x.post_title)}」・` : ''}${esc(ago(x.at))}</span>
+      ${x.body ? `<span class="small">${esc(x.body)}</span>` : ''}</a>`;
+  }
   $('bellBtn').addEventListener('click', async () => {
     if (!token()) return;
     if (!notifs) await loadNotifs();
     const items = notifs?.items || [];
-    openModal(`<h2>🔔 通知</h2><div class="notif-list">${items.length ? items.map(x => `
-        ${x.kind === 'reply' ? `<a class="notif ${x.unread ? 'unread' : ''}" href="${BASE}contact/" data-close>
-          📮 <b>お問い合わせに返信がありました</b><span class="small">${esc(ago(x.at))}</span>
-          ${x.body ? `<span class="small">${esc(x.body)}</span>` : ''}</a>`
-        : `<a class="notif ${x.unread ? 'unread' : ''}" href="${esc(x.goods_id ? goodsUrl(BASE, x.goods_id) : postUrl(BASE, x.post_id))}" data-close>
-          ${esc(x.who?.avatar || '😀')} <b>${esc(x.who?.display_name || x.who?.username || 'だれか')}</b> さんが
-          ${x.kind === 'comment' ? '💬 コメントしました' : '🧩 ピタっと！しました'}
-          <span class="small">「${esc(x.post_title || '')}」・${esc(ago(x.at))}</span>
-          ${x.body ? `<span class="small">${esc(x.body)}</span>` : ''}</a>`}`).join('')
-      : '<p class="small">まだ通知はありません。記事にコメントやピタっと！がつくと、ここに届きます。</p>'}</div>
+    openModal(`<h2>🔔 通知</h2><div class="notif-list">${items.length ? items.map(notifHtml).join('')
+      : '<p class="small">まだ通知はありません。コメント・ピタっと！・フォローなどがあると、ここに届きます。</p>'}</div>
       <div class="form-actions"><button class="btn btn-ghost" type="button" data-close>閉じる</button></div>`);
     if (notifs && Number(notifs.unread)) {
       try { await rpc('gp_notif_seen', { p_token: token() }); notifs.unread = 0; notifs.items.forEach(x => { x.unread = false; }); drawBell(); } catch { /* 次に開いたとき */ }
@@ -199,7 +212,7 @@
     openModal(`<h2>${esc(u.avatar || '😀')} ${esc(u.display_name || u.username)}</h2>
       <div style="display:grid;gap:8px">
         <a class="btn" href="${esc(userUrl(BASE, u.username))}" data-close>📝 自分の記事</a>
-        <a class="btn" href="${BASE}mylist/" data-close>📋 マイリスト（気になる・遊んだ！）</a>
+        <a class="btn" href="${BASE}mylist/" data-close>📋 マイリスト（あとで読む・ほしい・フォロー）</a>
         <button class="btn" type="button" id="mAccount">⚙️ アカウント設定・ログアウト</button>
         ${me?.is_admin ? `<a class="btn" href="${BASE}admin/" data-close>🛡️ 管理（通報）</a>` : ''}
         <button class="btn btn-ghost" type="button" data-close>閉じる</button>
@@ -239,6 +252,220 @@
     };
   }
 
+  // ---------- リアクション・あとで読む・ほしい・比較・フォロー（記事・商品ページ） ----------
+  const REACTS = {
+    post: { funny: '😂 おもしろい', helpful: '💡 参考になった', wantplay: '🎮 遊びたくなった' },
+    goods: { funny: '😂 おもしろい', helpful: '💡 参考になった', wantplay: '🛒 使ってみたくなった' },
+  };
+  function extrasHtml(target, author) {
+    const name = author ? (author.display_name || author.username) : '';
+    return `<div class="extras" id="extras">
+        <div class="reacts">${Object.entries(REACTS[target]).map(([k, v]) => `<button class="btn btn-sm react" type="button" data-react="${k}" aria-pressed="false">${v} <b>0</b></button>`).join('')}</div>
+        <div class="extra-btns">
+          <button class="btn btn-sm" type="button" data-x="bookmark" aria-pressed="false">🔖 あとで読む</button>
+          ${target === 'goods' ? `<button class="btn btn-sm" type="button" data-x="want" aria-pressed="false">⭐ ほしい <b>0</b></button>
+            <button class="btn btn-sm" type="button" data-x="compare" aria-pressed="false">⚖️ 比較に追加</button>` : ''}
+          ${author && author.username ? `<button class="btn btn-sm hidden" type="button" data-x="follow" aria-pressed="false" data-name="${esc(name)}">👤 ${esc(name)} さんをフォロー</button>` : ''}
+        </div></div>`;
+  }
+  async function bindExtras(target, id, author) {
+    const box = $('extras'); if (!box) return;
+    const q = sel => box.querySelector(sel);
+    const setReacts = (counts, mine) => box.querySelectorAll('[data-react]').forEach(b => {
+      const k = b.dataset.react; const on = (mine || []).includes(k);
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on));
+      b.querySelector('b').textContent = Number(counts?.[k]) || 0;
+    });
+    const setOn = (b, on, label) => { if (!b) return; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); if (label) b.firstChild.textContent = label; };
+    const followLabel = on => `👤 ${q('[data-x=follow]')?.dataset.name || ''} さんを${on ? 'フォロー中' : 'フォロー'}`;
+    const drawCompare = () => { const on = cmpGet().includes(id); setOn(q('[data-x=compare]'), on, on ? '⚖️ 比較リストに入っています' : '⚖️ 比較に追加'); };
+    if (target === 'goods') drawCompare();
+    try {
+      const st = await rpc('gp_item_state', { p_token: token(), p_target: target, p_id: id });
+      if (st.ok && $('extras') === box) {
+        setReacts(st.reactions, st.mine);
+        setOn(q('[data-x=bookmark]'), st.bookmarked, st.bookmarked ? '🔖 あとで読むに入っています' : '🔖 あとで読む');
+        const w = q('[data-x=want]'); if (w) { setOn(w, st.wanted); w.querySelector('b').textContent = Number(st.wants) || 0; }
+        const f = q('[data-x=follow]'); if (f && !st.self) { f.classList.remove('hidden'); setOn(f, st.following, followLabel(st.following)); }
+      }
+    } catch { /* 状態が取れなくても押せばわかる */ }
+    box.addEventListener('click', async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.x === 'compare') {
+        const r = cmpToggle(id); if (r === 'full') { toast('比較できるのは3つまでです'); return; }
+        drawCompare(); drawCompareBar(); toast(r === 'added' ? '比較リストに入れました' : '比較リストから外しました'); return;
+      }
+      if (!(await requireLogin())) return;
+      b.disabled = true;
+      try {
+        if (b.dataset.react) {
+          const x = await rpc('gp_react_toggle', { p_token: token(), p_target: target, p_id: id, p_kind: b.dataset.react });
+          if (!x.ok) { toast(reasonText(x.reason)); return; }
+          setReacts(x.reactions, x.mine);
+        } else if (b.dataset.x === 'bookmark') {
+          const x = await rpc('gp_bookmark_toggle', { p_token: token(), p_target: target, p_id: id });
+          if (!x.ok) { toast(reasonText(x.reason)); return; }
+          setOn(b, x.bookmarked, x.bookmarked ? '🔖 あとで読むに入っています' : '🔖 あとで読む');
+          toast(x.bookmarked ? '🔖 あとで読むに入れました（マイリストで見られます）' : 'あとで読むから外しました');
+        } else if (b.dataset.x === 'want') {
+          const x = await rpc('gp_goods_want_toggle', { p_token: token(), p_id: id });
+          if (!x.ok) { toast(reasonText(x.reason)); return; }
+          setOn(b, x.wanted); b.querySelector('b').textContent = Number(x.wants) || 0;
+          toast(x.wanted ? '⭐ ほしいものに入れました（マイリストで見られます）' : 'ほしいものから外しました');
+        } else if (b.dataset.x === 'follow' && author?.username) {
+          const x = await rpc('gp_follow_toggle', { p_token: token(), p_username: author.username });
+          if (!x.ok) { toast(reasonText(x.reason)); return; }
+          setOn(b, x.following, followLabel(x.following));
+          toast(x.following ? '👤 フォローしました。新しい投稿を🔔でお知らせします' : 'フォローを外しました');
+        }
+      } catch { toast('通信できませんでした'); } finally { b.disabled = false; }
+    });
+  }
+
+  // ---------- 商品の比較リスト（この端末に保存・3つまで） ----------
+  const CMP_KEY = 'gp_compare';
+  function cmpGet() {
+    try { const a = JSON.parse(localStorage.getItem(CMP_KEY) || '[]'); return Array.isArray(a) ? a.map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 3) : []; }
+    catch { return []; }
+  }
+  function cmpSet(a) { try { localStorage.setItem(CMP_KEY, JSON.stringify(a)); } catch { /* 保存できない端末 */ } }
+  function cmpToggle(id) {
+    const a = cmpGet();
+    if (a.includes(id)) { cmpSet(a.filter(x => x !== id)); return 'removed'; }
+    if (a.length >= 3) return 'full';
+    cmpSet([...a, id]); return 'added';
+  }
+  function drawCompareBar() {
+    $('cmpBar')?.remove();
+    const n = cmpGet().length; if (!n) return;
+    // 下のボタンが隠れないよう、バーの高さ分の空きもいっしょに入れる
+    app.insertAdjacentHTML('beforeend', `<div id="cmpBar"><div class="cmp-spacer"></div><div class="cmp-bar">⚖️ 比較リスト <b>${n}</b>/3
+      <a class="btn btn-sm btn-primary" href="${BASE}goods/compare/">比べる</a>
+      <button class="btn btn-sm btn-ghost" type="button" id="cmpClear">空にする</button></div></div>`);
+    $('cmpClear').addEventListener('click', () => { cmpSet([]); drawCompareBar(); $('extras') && $('extras').querySelector('[data-x=compare]') && route(); });
+  }
+  async function renderCompare() {
+    setMeta({ title: '商品の比較', noindex: true, path: `${BASE}goods/compare/` });
+    const ids = cmpGet();
+    if (!ids.length) {
+      app.innerHTML = `<h1 class="page-title">⚖️ 商品の比較</h1><div class="empty">比較リストは空です。<br>商品紹介のページで「⚖️ 比較に追加」を押すと、3つまで並べて比べられます。<br>
+        <a class="btn btn-primary" href="${BASE}goods/" style="margin-top:12px">🛍️ 商品紹介を見る</a></div>`; return;
+    }
+    app.innerHTML = '<div class="loading">読み込み中…</div>';
+    const rs = await Promise.all(ids.map(id => rpc('gp_goods_get', { p_token: null, p_id: id }).catch(() => null)));
+    const items = rs.filter(r => r && r.ok).map(r => r.item);
+    // 消された商品はリストからも外す
+    if (items.length !== ids.length) cmpSet(items.map(g => g.id));
+    if (!items.length) { renderCompare(); return; }
+    const row = (label, f) => `<tr><th scope="row">${label}</th>${items.map(g => `<td>${f(g)}</td>`).join('')}</tr>`;
+    app.innerHTML = `<h1 class="page-title">⚖️ 商品の比較</h1>
+      <p class="small">比較リストはこの端末だけに保存されます。価格は書いた時点の目安です。</p>
+      <div class="cmp-wrap"><table class="cmp-table">
+        <thead><tr><th></th>${items.map(g => `<th scope="col"><a href="${esc(goodsUrl(BASE, g.id))}">${R.goodsCoverHtml(g)}<span>${esc(g.name)}</span></a></th>`).join('')}</tr></thead>
+        <tbody>
+          ${row('種類', g => `${GOODS_CATS[g.category]?.e || ''} ${esc(GOODS_CATS[g.category]?.t || '')}`)}
+          ${row('メーカー', g => esc(g.maker || '—'))}
+          ${row('参考価格', g => (g.price != null ? esc(R.yen(g.price)) : '—'))}
+          ${row('おすすめ度', g => `${'★'.repeat(Number(g.rating) || 0)}<span class="off">${'★'.repeat(5 - (Number(g.rating) || 0))}</span>`)}
+          ${row('ピタっと！', g => `🧩 ${Number(g.likes) || 0}`)}
+          ${row('紹介', g => `<a href="${esc(goodsUrl(BASE, g.id))}">${esc(g.title)}</a>`)}
+          ${row('販売ページ', g => { const u = g.shop_url ? safeUrl(g.shop_url) : null; return u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer nofollow sponsored ugc">🛒 開く</a>` : '—'; })}
+          ${row('', g => `<button class="btn btn-sm btn-ghost" type="button" data-cmprm="${Number(g.id)}">✕ 外す</button>`)}
+        </tbody></table></div>
+      <p class="small">※ 外部のサイトが開きます。買うときは、おうちの人と相談してね。</p>
+      <div class="more"><a class="btn" href="${BASE}goods/">🛍️ 商品紹介にもどる</a></div>`;
+    app.querySelectorAll('[data-cmprm]').forEach(b => b.addEventListener('click', () => { cmpToggle(Number(b.dataset.cmprm)); renderCompare(); }));
+  }
+
+  // ---------- お題企画（バナー） ----------
+  let themesP = null;
+  const loadThemes = () => (themesP ||= rpc('gp_themes_list').catch(() => { themesP = null; return null; }));
+  async function drawThemeBanner() {
+    const el = $('themeBanner'); if (!el) return;
+    const r = await loadThemes();
+    if (!r || !r.ok || !r.current.length || $('themeBanner') !== el) return;
+    el.innerHTML = r.current.map(t => `<div class="theme-banner">
+        <div><span class="tb-label">🎯 開催中のお題</span> <b>${esc(t.title)}</b> <a class="chip tag" href="${BASE}blog/?tag=${encodeURIComponent(t.tag)}">#${esc(t.tag)}</a>
+          <span class="small">${esc(t.ends_on)} まで ／ 投稿 ${Number(t.count)} 件</span></div>
+        ${t.description ? `<div class="small">${esc(t.description)}</div>` : ''}
+        <div class="tb-actions"><a class="btn btn-sm btn-primary" href="${BASE}new/?tag=${encodeURIComponent(t.tag)}">✏️ このお題で書く</a>
+          <a class="btn btn-sm" href="${BASE}goods/new/?tag=${encodeURIComponent(t.tag)}">🛍️ 商品で参加</a></div></div>`).join('');
+  }
+  async function renderThemes() {
+    setMeta({ title: 'お題企画', desc: 'GamePita のお題企画の一覧です。お題のタグをつけて記事や商品紹介を書いて参加しよう！', path: `${BASE}theme/` });
+    app.innerHTML = '<div class="loading">読み込み中…</div>';
+    const r = await loadThemes();
+    if (!r || !r.ok) { app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; return; }
+    const li = (t, open) => `<div class="report-item"><b>${esc(t.title)}</b> <a class="chip tag" href="${BASE}blog/?tag=${encodeURIComponent(t.tag)}">#${esc(t.tag)}</a>
+        <span class="small">${esc(t.starts_on)} 〜 ${esc(t.ends_on)} ／ 投稿 ${Number(t.count)} 件</span>
+        ${t.description ? `<div class="small">${esc(t.description)}</div>` : ''}
+        ${open ? `<div class="tb-actions"><a class="btn btn-sm btn-primary" href="${BASE}new/?tag=${encodeURIComponent(t.tag)}">✏️ このお題で書く</a>
+          <a class="btn btn-sm" href="${BASE}goods/new/?tag=${encodeURIComponent(t.tag)}">🛍️ 商品で参加</a></div>` : ''}</div>`;
+    app.innerHTML = `<h1 class="page-title">🎯 お題企画</h1>
+      <p class="small">お題のタグをつけて記事や商品紹介を書くと、お題に参加できます。お題は運営者が出します。</p>
+      <h2 class="section-title">開催中</h2>${r.current.length ? r.current.map(t => li(t, true)).join('') : '<p class="small">いま開催中のお題はありません。</p>'}
+      ${r.upcoming.length ? `<h2 class="section-title">これから</h2>${r.upcoming.map(t => li(t, false)).join('')}` : ''}
+      ${r.past.length ? `<h2 class="section-title">おわったお題</h2>${r.past.map(t => li(t, false)).join('')}` : ''}`;
+  }
+
+  // ---------- ランキング ----------
+  async function renderRanking() {
+    const qs = new URLSearchParams(location.search);
+    const kind = qs.get('k') === 'goods' ? 'goods' : 'post';
+    const period = ['week', 'month', 'all'].includes(qs.get('p')) ? qs.get('p') : 'week';
+    const PERIODS = { week: '週間（7日）', month: '月間（30日）', all: 'ぜんぶ' };
+    const link = (k, pp) => `${BASE}ranking/${k === 'post' && pp === 'week' ? '' : `?k=${k}&p=${pp}`}`;
+    setMeta({ title: 'ランキング', desc: 'GamePita で「ピタっと！」が多かった記事・商品紹介のランキングです。', path: `${BASE}ranking/`, noindex: kind !== 'post' || period !== 'week' });
+    app.innerHTML = `<h1 class="page-title">🏆 ランキング</h1>
+      <p class="small">期間中にもらった「🧩 ピタっと！」の数で並べています。</p>
+      <div class="chips">${['post', 'goods'].map(k => `<a class="chip ${kind === k ? 'on' : ''}" href="${link(k, period)}">${k === 'post' ? '📚 ゲーム記事' : '🛍️ 商品紹介'}</a>`).join('')}</div>
+      <div class="chips">${Object.entries(PERIODS).map(([k, v]) => `<a class="chip ${period === k ? 'on' : ''}" href="${link(kind, k)}">${esc(v)}</a>`).join('')}</div>
+      <div id="rankList" class="grid"><div class="loading">読み込み中…</div></div>`;
+    try {
+      const r = await rpc('gp_ranking', { p_kind: kind, p_period: period });
+      const el = $('rankList'); if (!el) return;
+      if (!r.ok || !r.items.length) { el.innerHTML = '<div class="empty" style="grid-column:1/-1">この期間には、まだピタっと！がありません。</div>'; return; }
+      el.innerHTML = r.items.map((x, i) => {
+        const n = Number(x.score) || 0; const y = { ...x }; delete y.score;
+        const medal = ['🥇', '🥈', '🥉'][i] || `${i + 1}位`;
+        return `<div class="rank-wrap"><span class="rank-no">${medal} <span class="small">🧩${n}</span></span>${kind === 'goods' ? gcard(y) : card(y)}</div>`;
+      }).join('');
+    } catch { const el = $('rankList'); if (el) el.innerHTML = '<div class="empty" style="grid-column:1/-1">読み込めませんでした。</div>'; }
+  }
+
+  // ---------- 下書き（アカウントに保存） ----------
+  // 下書きは自分しか見ないが、念のため決まった項目・型だけ取り出して使う
+  function pickDraft(d, tpl) {
+    const o = {}; if (!d || typeof d !== 'object') return o;
+    for (const [k, t] of Object.entries(tpl)) {
+      const v = d[k];
+      if (v == null) continue;
+      if (Array.isArray(t)) { if (Array.isArray(v)) o[k] = v.filter(x => typeof x === 'string').slice(0, 10); }
+      else if (t === null ? typeof v === 'number' : typeof v === typeof t) o[k] = v;
+    }
+    return o;
+  }
+  async function loadCloudDraft(kind, tpl, localSavedAt) {
+    try {
+      const r = await rpc('gp_draft_get', { p_token: token(), p_kind: kind });
+      if (r.ok && r.data && (!localSavedAt || new Date(r.updated_at) > new Date(localSavedAt))) return pickDraft(r.data, tpl);
+    } catch { /* 取れなければ端末の下書きだけ使う */ }
+    return null;
+  }
+  let cloudT = 0;
+  function cloudSave(kind, d) {
+    clearTimeout(cloudT);
+    cloudT = setTimeout(async () => {
+      try {
+        const r = await rpc('gp_draft_save', { p_token: token(), p_kind: kind, p_data: d });
+        const el = $('cloudNote');
+        if (el) el.textContent = r.ok ? `☁️ アカウントに下書きを保存しました（${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}）` : reasonText(r.reason);
+      } catch { /* 次の入力でまた保存する */ }
+    }, 3000);
+  }
+  function cloudDone(kind) { clearTimeout(cloudT); rpc('gp_draft_delete', { p_token: token(), p_kind: kind }).catch(() => {}); }
+  const presetTag = () => { const t = new URLSearchParams(location.search).get('tag'); return t && /^[^\s<>#＃]{1,20}$/.test(t) ? t : null; };
+
   // ---------- 遊んだ！・気になる ----------
   function marksHtml(gameId, my, counts) {
     return `<div class="marks" data-game="${Number(gameId)}"><span class="label">このゲーム:</span>
@@ -263,6 +490,9 @@
   async function renderHome() {
     setMeta({ path: BASE });
     app.innerHTML = `${R.heroHtml(BASE)}
+      <div id="themeBanner"></div>
+      <div class="quick-links"><a class="btn btn-sm" href="${BASE}ranking/">🏆 ランキング</a><a class="btn btn-sm" href="${BASE}theme/">🎯 お題企画</a>
+        <a class="btn btn-sm" href="${BASE}goods/">🛍️ 商品紹介</a></div>
       <form class="toolbar" id="searchForm" role="search">
         <div class="search"><input type="search" id="q" placeholder="ゲーム名・キーワードでさがす" maxlength="50">
           <button type="submit" aria-label="検索">🔍</button></div>
@@ -289,7 +519,7 @@
           : `<div class="empty" style="grid-column:1/-1">まだ記事がありません。<br><a class="btn btn-primary" href="${BASE}new/" style="margin-top:12px">✏️ 最初の記事を書く</a></div>`;
       } catch { const el = $(id); if (el) el.innerHTML = '<div class="empty" style="grid-column:1/-1">読み込めませんでした。</div>'; }
     };
-    fill('newList', 'new'); fill('popList', 'popular');
+    fill('newList', 'new'); fill('popList', 'popular'); drawThemeBanner();
     rpc('gp_goods_list', { p_q: null, p_category: null, p_tag: null, p_author: null, p_sort: 'new', p_offset: 0 }).then(r => {
       const el = $('goodsNew'); if (!el) return;
       const items = r.items.slice(0, 4);
@@ -331,6 +561,7 @@
     });
     app.innerHTML = `
       <h1 class="page-title">${esc(heading)}</h1>
+      <div id="themeBanner"></div>
       <form class="toolbar" id="searchForm" role="search">
         <div class="search"><input type="search" id="q" placeholder="ゲーム名・キーワードでさがす" maxlength="50" value="${esc(listState.q)}">
           <button type="submit" aria-label="検索">🔍</button></div>
@@ -347,6 +578,7 @@
       <div id="list" class="grid"><div class="loading">読み込み中…</div></div>
       <div class="more hidden" id="moreWrap"><button class="btn" type="button" id="moreBtn">もっと見る</button></div>`;
     $('sort').value = listState.sort;
+    drawThemeBanner();
     $('searchForm').addEventListener('submit', e => { e.preventDefault(); go(listUrl({ q: $('q').value.trim() })); });
     $('sort').addEventListener('change', () => go(listUrl({ sort: $('sort').value })));
     let offset = 0;
@@ -400,6 +632,7 @@
             ${p.mine || (r.is_admin && p.status === 'public') ? `<button class="btn btn-sm btn-danger" type="button" id="delBtn">🗑️ ${p.mine ? '削除' : '非表示（管理）'}</button>` : ''}
             ${!p.mine ? '<button class="btn btn-sm btn-ghost" type="button" id="repBtn">🚩 通報</button>' : ''}
           </div>
+          ${p.status === 'public' ? extrasHtml('post', p.author) : ''}
         </div>
       </article>
       <section class="similar" id="similar"></section>
@@ -414,6 +647,7 @@
       <p style="text-align:center;margin-top:18px"><a href="${BASE}blog/">← ブログ一覧へ</a></p>`;
 
     bindMarks(app);
+    bindExtras('post', p.id, p.author);
     rpc('gp_similar', { p_id: p.id }).then(list => {
       const el = $('similar'); if (!el || !list.length) return;
       el.innerHTML = `<h2 class="section-title">🧩 このゲームが好きなら、これも</h2><div class="grid">${list.map(card).join('')}</div>`;
@@ -521,6 +755,7 @@
       $('loginGo').onclick = async () => { if (await requireLogin()) route(); };
       return;
     }
+    let fromCloud = false;
     let data = { title: '', game: '', genre: '', tags: [], platforms: [], players: '', length: '', difficulty: '', price: '', rating: 0, body: '', cover_url: '', official_url: '' };
     if (editId) {
       app.innerHTML = '<div class="loading">読み込み中…</div>';
@@ -530,7 +765,14 @@
         data = { ...data, ...r.post, cover_url: r.post.cover_url || '', official_url: r.post.official_url || '' };
       } catch { app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; return; }
     } else {
-      try { const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); if (d && typeof d === 'object') data = { ...data, ...d }; } catch { /* 下書きが壊れていたら無視 */ }
+      let local = null;
+      try { const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); if (d && typeof d === 'object') local = d; } catch { /* 下書きが壊れていたら無視 */ }
+      const tpl = { ...data };
+      if (local) data = { ...data, ...pickDraft(local, tpl) };
+      app.innerHTML = '<div class="loading">読み込み中…</div>';
+      const cloud = await loadCloudDraft('post', tpl, local?.savedAt);
+      if (cloud) { data = { ...data, ...cloud }; fromCloud = true; }
+      const pt = presetTag(); if (pt && !data.tags.includes(pt) && data.tags.length < 5) data.tags = [...data.tags, pt];
     }
     const radio = (name, map, val) => Object.entries(map).map(([k, v]) =>
       `<label class="opt"><input type="radio" name="${name}" value="${k}" ${val === k ? 'checked' : ''}><span>${esc(v)}</span></label>`).join('');
@@ -581,6 +823,7 @@
           </div>
         </div>
         <p class="err" id="formErr" role="alert"></p>
+        <p class="small cloud-note" id="cloudNote">${fromCloud ? '☁️ アカウントに保存した下書きを読み込みました' : ''}</p>
         <div class="form-actions">
           <a class="btn btn-ghost" href="${editId ? esc(postUrl(BASE, editId)) : BASE}">やめる</a>
           <button class="btn btn-primary" type="submit" id="saveBtn">${editId ? '更新する' : '投稿する'}</button>
@@ -626,7 +869,12 @@
       tags: $('fTags').value.split(/[\s,、，]+/).map(x => x.replace(/^[#＃]+/, '').trim()).filter(Boolean),
     });
     // 新規のときだけ、この端末に下書きを残す
-    const saveDraft = () => { if (!editId) { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(collect())); } catch { /* 容量不足は無視 */ } } };
+    const saveDraft = () => {
+      if (editId) return;
+      const d = collect();
+      try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...d, savedAt: new Date().toISOString() })); } catch { /* 容量不足は無視 */ }
+      cloudSave('post', d);
+    };
     $('postForm').addEventListener('input', saveDraft);
     $('postForm').addEventListener('change', saveDraft);
 
@@ -643,7 +891,7 @@
       try {
         const r = await rpc('gp_post_save', { p_token: token(), p_id: editId || null, p_data: d });
         if (!r.ok) { err.textContent = reasonText(r.reason); return; }
-        if (!editId) localStorage.removeItem(DRAFT_KEY);
+        if (!editId) { localStorage.removeItem(DRAFT_KEY); cloudDone('post'); }
         toast(editId ? '更新しました' : '投稿しました！');
         go(postUrl(BASE, r.id));
       } catch { err.textContent = '送れませんでした。通信を確かめてください（下書きはこの端末に残っています）。'; }
@@ -798,13 +1046,33 @@
       return;
     }
     app.innerHTML = '<div class="loading">読み込み中…</div>';
+    const T = new URLSearchParams(location.search).get('t');
+    const TABS = { games: '🎮 ゲーム', read: '🔖 あとで読む', want: '⭐ ほしいもの', follow: '👥 フォロー中' };
+    const topTabs = cur => `<div class="chips mylist-top">${Object.entries(TABS).map(([k, v]) =>
+      `<a class="chip ${cur === k ? 'on' : ''}" href="${BASE}mylist/${k === 'games' ? '' : `?t=${k}`}">${esc(v)}</a>`).join('')}</div>`;
+    if (T === 'read' || T === 'want' || T === 'follow') {
+      let L;
+      try { L = await rpc('gp_my_lists', { p_token: token() }); } catch { app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; return; }
+      if (!L.ok) { app.innerHTML = `<div class="empty">${esc(reasonText(L.reason))}</div>`; return; }
+      const mixed = list => list.map(x => (x.kind === 'goods' ? gcard(x) : card(x))).join('');
+      let body = '';
+      if (T === 'read') body = L.bookmarks.length ? `<div class="grid">${mixed(L.bookmarks)}</div>` : '<div class="empty">まだありません。記事や商品のページで「🔖 あとで読む」を押してみよう！</div>';
+      if (T === 'want') body = L.wants.length ? `<div class="grid">${L.wants.map(gcard).join('')}</div>` : '<div class="empty">まだありません。商品紹介のページで「⭐ ほしい」を押してみよう！</div>';
+      if (T === 'follow') body = `<h2 class="section-title">👥 フォロー中の人（${L.following.length}）</h2>
+          <div class="badges">${L.following.length ? L.following.map(a => R.authorHtml(BASE, a)).join(' ') : '<span class="small">まだだれもフォローしていません。記事のページや書いた人のページでフォローできます。</span>'}</div>
+          <h2 class="section-title">🆕 フォロー中の人の新しい投稿</h2>
+          ${L.feed.length ? `<div class="grid">${mixed(L.feed)}</div>` : '<div class="empty">最近の投稿はありません。</div>'}`;
+      app.innerHTML = `<h1 class="page-title">📋 マイリスト</h1>${topTabs(T)}
+        <p class="small">マイリストは自分だけが見られます。</p>${body}`;
+      return;
+    }
     let r;
     try { r = await rpc('gp_my_marks', { p_token: token() }); } catch { app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; return; }
     if (!r.ok) { app.innerHTML = `<div class="empty">${esc(reasonText(r.reason))}</div>`; return; }
     const tab = new URLSearchParams(location.search).get('s');
     const cur = MARKS[tab] ? tab : '';
     const items = r.items.filter(x => !cur || x.status === cur);
-    app.innerHTML = `<h1 class="page-title">📋 マイリスト</h1>
+    app.innerHTML = `<h1 class="page-title">📋 マイリスト</h1>${topTabs('games')}
       <p class="small">記事やゲームのページで「気になる・プレイ中・遊んだ！」を押すと、ここにたまります（自分だけが見られます）。</p>
       <div class="mylist-tabs"><a class="chip ${cur ? '' : 'on'}" href="${BASE}mylist/">すべて ${r.items.length}</a>
         ${Object.entries(MARKS).map(([k, m]) => `<a class="chip ${cur === k ? 'on' : ''}" href="${BASE}mylist/?s=${k}">${m.e} ${esc(m.t)} ${r.items.filter(x => x.status === k).length}</a>`).join('')}</div>
@@ -827,11 +1095,34 @@
       setMeta({ title: `${name} さんのゲーム紹介記事`, desc: `${name} さんが GamePita に書いたゲーム紹介記事の一覧です。`, path: userUrl(BASE, a.username), noindex: Number(pr.posts) === 0 });
       app.innerHTML = `<section class="profile"><div class="av">${esc(a.avatar || '😀')}</div>
         <div><h1>${esc(name)}</h1><div class="small">@${esc(a.username)} ／ 記事 ${Number(pr.posts)} 件 ／ もらったピタっと！ ${Number(pr.likes)}</div>
-        ${pr.badges?.length ? `<div class="badges" style="margin-top:6px">${badgesHtml(pr.badges)}</div>` : ''}</div></section>
+        ${pr.badges?.length ? `<div class="badges" style="margin-top:6px">${badgesHtml(pr.badges)}</div>` : ''}
+        <div class="follow-row" id="followRow"></div></div></section>
         <div class="grid">${list.items.length ? list.items.map(card).join('') : '<div class="empty" style="grid-column:1/-1">まだ記事がありません。</div>'}</div>
         ${list.more ? '<p class="small" style="text-align:center">最新の24件を表示しています。</p>' : ''}
         ${goods.items.length ? `<h2 class="section-title">🛍️ 紹介した商品</h2><div class="grid">${goods.items.map(gcard).join('')}</div>` : ''}`;
+      drawFollowRow(a.username);
     } catch { app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; }
+  }
+
+  async function drawFollowRow(username) {
+    const el = $('followRow'); if (!el) return;
+    let st;
+    try { st = await rpc('gp_follow_state', { p_token: token(), p_username: username }); } catch { return; }
+    if (!st.ok || $('followRow') !== el) return;
+    const draw = () => {
+      el.innerHTML = `<span class="small">フォロワー <b>${Number(st.followers)}</b> ／ フォロー中 <b>${Number(st.followees)}</b></span>
+        ${st.self ? '' : `<button class="btn btn-sm ${st.following ? 'on' : 'btn-primary'}" type="button" id="followBtn" aria-pressed="${st.following}">${st.following ? '✅ フォロー中' : '👤 フォローする'}</button>`}`;
+      $('followBtn')?.addEventListener('click', async () => {
+        if (!(await requireLogin())) return;
+        try {
+          const x = await rpc('gp_follow_toggle', { p_token: token(), p_username: username });
+          if (!x.ok) { toast(reasonText(x.reason)); return; }
+          st.following = x.following; st.followers = x.followers; draw();
+          toast(x.following ? '👤 フォローしました。新しい投稿を🔔でお知らせします' : 'フォローを外しました');
+        } catch { toast('通信できませんでした'); }
+      });
+    };
+    draw();
   }
 
   // ---------- 管理 ----------
@@ -850,6 +1141,10 @@
           <form id="offForm" class="comment-form"><input type="text" id="offUser" maxlength="40" placeholder="ユーザー名（@のあと）">
             <button class="btn btn-sm btn-primary" type="submit" data-on="1">公認にする</button>
             <button class="btn btn-sm" type="submit" data-on="0">公認を外す</button></form></section>
+        <h2 class="section-title">🆕 新しい投稿（14日以内）</h2>
+        <div id="admNew"><div class="loading">読み込み中…</div></div>
+        <h2 class="section-title">🎯 お題企画</h2>
+        <div id="admTheme"><div class="loading">読み込み中…</div></div>
         <h2 class="section-title">📮 お問い合わせ</h2>
         <div id="admInq"><div class="loading">読み込み中…</div></div>
         <h2 class="section-title">🚩 通報の一覧（${r.reports.length}）</h2>
@@ -863,7 +1158,7 @@
             <button class="btn btn-sm btn-danger" type="button" data-rm="${esc(x.target)}:${Number(x.target_id)}">${x.target === 'post' || x.target === 'goods' ? '非表示にする' : 'コメントを削除'}</button>
             <button class="btn btn-sm" type="button" data-dismiss="${Number(x.id)}">問題なし（片づける）</button>
           </div></div>`).join('') : '<div class="empty">通報はありません。</div>'}`;
-      loadAdminInquiries();
+      loadAdminInquiries(); loadAdminNew(); loadAdminThemes();
       $('offForm').addEventListener('submit', async e => {
         e.preventDefault();
         const on = (e.submitter || {}).dataset?.on === '1';
@@ -893,6 +1188,71 @@
     } catch { app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; }
   }
 
+  async function loadAdminNew() {
+    const el = $('admNew'); if (!el) return;
+    let r;
+    try { r = await rpc('gp_admin_new_items', { p_token: token() }); } catch { el.innerHTML = '<p class="small">読み込めませんでした。</p>'; return; }
+    if (!r.ok) { el.innerHTML = `<p class="small">${esc(reasonText(r.reason))}</p>`; return; }
+    el.innerHTML = r.items.length ? r.items.map(x => `<div class="report-item">
+        <div class="small">${esc(fmtDate(x.created_at))} ／ ${x.kind === 'goods' ? '🛍️ 商品紹介' : '📚 記事'} ／ ${esc(x.author?.display_name || x.author?.username || '?')}
+          ${Number(x.reports) ? `／ <b class="danger-text">🚩 通報 ${Number(x.reports)}</b>` : ''}</div>
+        <div><b>${esc(x.title)}</b> <span class="small">（${esc(x.name)}）</span></div>
+        <div class="actions" style="margin-top:8px;padding-top:8px">
+          <a class="btn btn-sm" href="${esc(x.kind === 'goods' ? goodsUrl(BASE, x.id) : postUrl(BASE, x.id))}">開く</a>
+          <button class="btn btn-sm btn-danger" type="button" data-hide="${x.kind === 'goods' ? 'goods' : 'post'}:${Number(x.id)}">非表示にする</button></div></div>`).join('')
+      : '<p class="small">最近の投稿はありません。</p>';
+    el.querySelectorAll('[data-hide]').forEach(b => b.addEventListener('click', async () => {
+      const [kind, idStr] = b.dataset.hide.split(':');
+      if (!(await confirmBox('この投稿を非表示にしますか？', '非表示にする', true))) return;
+      try {
+        const x = await rpc(kind === 'goods' ? 'gp_goods_delete' : 'gp_post_delete', { p_token: token(), p_id: Number(idStr) });
+        if (!x.ok) { toast(reasonText(x.reason)); return; }
+        toast('非表示にしました'); loadAdminNew();
+      } catch { toast('通信できませんでした'); }
+    }));
+  }
+  async function loadAdminThemes() {
+    const el = $('admTheme'); if (!el) return;
+    themesP = null;
+    const r = await loadThemes();
+    if (!r || !r.ok) { el.innerHTML = '<p class="small">読み込めませんでした。</p>'; return; }
+    const all = [...r.current, ...r.upcoming, ...r.past];
+    const today = r.today || new Date().toISOString().slice(0, 10);
+    el.innerHTML = `<form class="report-item theme-form" id="themeForm">
+        <input type="hidden" id="thId" value="">
+        <div class="row2"><div class="field"><label for="thTitle">お題のタイトル（40文字まで）</label><input type="text" id="thTitle" maxlength="40" placeholder="例: 冬に遊びたいゲーム"></div>
+          <div class="field"><label for="thTag">タグ（20文字まで・空白なし）</label><input type="text" id="thTag" maxlength="21" placeholder="例: 冬ゲーム"></div></div>
+        <div class="field"><label for="thDesc">説明（任意・300文字まで）</label><textarea id="thDesc" rows="2" maxlength="300"></textarea></div>
+        <div class="row2"><div class="field"><label for="thS">開始日</label><input type="date" id="thS" value="${esc(today)}"></div>
+          <div class="field"><label for="thE">終了日</label><input type="date" id="thE"></div></div>
+        <div class="form-actions"><button class="btn btn-ghost btn-sm" type="reset" id="thReset">クリア</button><button class="btn btn-primary btn-sm" type="submit" id="thSave">お題を保存</button></div>
+      </form>
+      ${all.length ? all.map(t => `<div class="report-item"><b>${esc(t.title)}</b> #${esc(t.tag)} <span class="small">${esc(t.starts_on)} 〜 ${esc(t.ends_on)} ／ 投稿 ${Number(t.count)}</span>
+        <div class="actions" style="margin-top:6px;padding-top:6px"><button class="btn btn-sm" type="button" data-thedit="${Number(t.id)}">直す</button>
+        <button class="btn btn-sm btn-danger" type="button" data-thdel="${Number(t.id)}">削除</button></div></div>`).join('') : '<p class="small">まだお題はありません。</p>'}`;
+    $('thReset').addEventListener('click', () => { $('thId').value = ''; });
+    $('themeForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const id = $('thId').value ? Number($('thId').value) : null;
+      try {
+        const x = await rpc('gp_admin_theme_save', { p_token: token(), p_id: id, p_data: { title: $('thTitle').value.trim(), tag: $('thTag').value.trim(),
+          description: $('thDesc').value.trim(), starts_on: $('thS').value, ends_on: $('thE').value } });
+        if (!x.ok) { toast(reasonText(x.reason)); return; }
+        toast('お題を保存しました'); loadAdminThemes();
+      } catch { toast('通信できませんでした'); }
+    });
+    el.querySelectorAll('[data-thedit]').forEach(b => b.addEventListener('click', () => {
+      const t = all.find(x => x.id === Number(b.dataset.thedit)); if (!t) return;
+      $('thId').value = t.id; $('thTitle').value = t.title; $('thTag').value = t.tag; $('thDesc').value = t.description || '';
+      $('thS').value = t.starts_on; $('thE').value = t.ends_on; $('thTitle').focus();
+    }));
+    el.querySelectorAll('[data-thdel]').forEach(b => b.addEventListener('click', async () => {
+      if (!(await confirmBox('このお題を削除しますか？（記事のタグはそのまま残ります）', '削除する', true))) return;
+      try { const x = await rpc('gp_admin_theme_delete', { p_token: token(), p_id: Number(b.dataset.thdel) }); if (!x.ok) toast(reasonText(x.reason)); }
+      catch { toast('通信できませんでした'); }
+      loadAdminThemes();
+    }));
+  }
   async function loadAdminInquiries() {
     const el = $('admInq'); if (!el) return;
     let r;
@@ -977,6 +1337,7 @@
     };
     $('moreBtn').addEventListener('click', async e => { e.target.disabled = true; await load(); e.target.disabled = false; });
     load();
+    drawCompareBar();
   }
 
   // ---------- 商品紹介：1件 ----------
@@ -1006,6 +1367,7 @@
             ${g.mine || (r.is_admin && g.status === 'public') ? `<button class="btn btn-sm btn-danger" type="button" id="delBtn">🗑️ ${g.mine ? '削除' : '非表示（管理）'}</button>` : ''}
             ${!g.mine ? '<button class="btn btn-sm btn-ghost" type="button" id="repBtn">🚩 通報</button>' : ''}
           </div>
+          ${g.status === 'public' ? extrasHtml('goods', g.author) : ''}
         </div>
       </article>
       <section class="comments">
@@ -1017,6 +1379,8 @@
         </form>
       </section>
       <p style="text-align:center;margin-top:18px"><a href="${BASE}goods/">← 商品紹介の一覧へ</a></p>`;
+    bindExtras('goods', g.id, g.author);
+    drawCompareBar();
 
     $('pitaBtn').addEventListener('click', async () => {
       if (!(await requireLogin())) return;
@@ -1076,6 +1440,7 @@
       $('loginGo').onclick = async () => { if (await requireLogin()) route(); };
       return;
     }
+    let fromCloud = false;
     let data = { title: '', name: '', category: '', maker: '', price: null, rating: 0, body: '', image_url: '', shop_url: '', tags: [], pr: false };
     if (editId) {
       app.innerHTML = '<div class="loading">読み込み中…</div>';
@@ -1085,7 +1450,14 @@
         data = { ...data, ...r.item, maker: r.item.maker || '', image_url: r.item.image_url || '', shop_url: r.item.shop_url || '' };
       } catch { app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; return; }
     } else {
-      try { const d = JSON.parse(localStorage.getItem(GOODS_DRAFT_KEY) || 'null'); if (d && typeof d === 'object') data = { ...data, ...d }; } catch { /* 下書きが壊れていたら無視 */ }
+      let local = null;
+      try { const d = JSON.parse(localStorage.getItem(GOODS_DRAFT_KEY) || 'null'); if (d && typeof d === 'object') local = d; } catch { /* 下書きが壊れていたら無視 */ }
+      const tpl = { ...data };
+      if (local) data = { ...data, ...pickDraft(local, tpl) };
+      app.innerHTML = '<div class="loading">読み込み中…</div>';
+      const cloud = await loadCloudDraft('goods', tpl, local?.savedAt);
+      if (cloud) { data = { ...data, ...cloud }; fromCloud = true; }
+      const pt = presetTag(); if (pt && !data.tags.includes(pt) && data.tags.length < 5) data.tags = [...data.tags, pt];
     }
     app.innerHTML = `
       <form class="form" id="goodsForm" novalidate>
@@ -1128,6 +1500,7 @@
         <div class="field"><label class="opt pr-opt"><input type="checkbox" id="gPr" ${data.pr ? 'checked' : ''}>
           <span>📢 メーカーなどから、この商品やお金をもらったり、紹介を頼まれたりして書いた（「PR」と表示されます）</span></label></div>
         <p class="err" id="formErr" role="alert"></p>
+        <p class="small cloud-note" id="cloudNote">${fromCloud ? '☁️ アカウントに保存した下書きを読み込みました' : ''}</p>
         <div class="form-actions">
           <a class="btn btn-ghost" href="${editId ? esc(goodsUrl(BASE, editId)) : `${BASE}goods/`}">やめる</a>
           <button class="btn btn-primary" type="submit" id="saveBtn">${editId ? '更新する' : '投稿する'}</button>
@@ -1160,7 +1533,12 @@
       rating, body: body.value, image_url: $('gImage').value.trim(), shop_url: $('gShop').value.trim(), pr: $('gPr').checked,
       tags: $('gTags').value.split(/[\s,、，]+/).map(x => x.replace(/^[#＃]+/, '').trim()).filter(Boolean),
     });
-    const saveDraft = () => { if (!editId) { try { const d = collect(); if (Number.isNaN(d.price)) d.price = null; localStorage.setItem(GOODS_DRAFT_KEY, JSON.stringify(d)); } catch { /* 容量不足は無視 */ } } };
+    const saveDraft = () => {
+      if (editId) return;
+      const d = collect(); if (Number.isNaN(d.price)) d.price = null;
+      try { localStorage.setItem(GOODS_DRAFT_KEY, JSON.stringify({ ...d, savedAt: new Date().toISOString() })); } catch { /* 容量不足は無視 */ }
+      cloudSave('goods', d);
+    };
     $('goodsForm').addEventListener('input', saveDraft);
     $('goodsForm').addEventListener('change', saveDraft);
 
@@ -1176,7 +1554,7 @@
       try {
         const r = await rpc('gp_goods_save', { p_token: token(), p_id: editId || null, p_data: d });
         if (!r.ok) { err.textContent = reasonText(r.reason); return; }
-        if (!editId) localStorage.removeItem(GOODS_DRAFT_KEY);
+        if (!editId) { localStorage.removeItem(GOODS_DRAFT_KEY); cloudDone('goods'); }
         toast(editId ? '更新しました' : '投稿しました！');
         go(goodsUrl(BASE, r.id));
       } catch { err.textContent = '送れませんでした。通信を確かめてください（下書きはこの端末に残っています）。'; }
@@ -1335,6 +1713,9 @@
     else if (/^new\/?$/.test(rel)) renderEditor(null);
     else if (/^goods\/?$/.test(rel)) renderGoodsList('');
     else if (/^goods\/new\/?$/.test(rel)) renderGoodsEditor(null);
+    else if (/^goods\/compare\/?$/.test(rel)) renderCompare();
+    else if (/^ranking\/?$/.test(rel)) renderRanking();
+    else if (/^theme\/?$/.test(rel)) renderThemes();
     else if ((m = rel.match(/^goods\/category\/([a-z]{3,8})\/?$/)) && Object.hasOwn(GOODS_CATS, m[1])) renderGoodsList(m[1]);
     else if ((m = rel.match(/^goods\/(\d{1,15})\/?$/))) renderGoods(Number(m[1]));
     else if ((m = rel.match(/^goods\/(\d{1,15})\/edit\/?$/))) renderGoodsEditor(Number(m[1]));

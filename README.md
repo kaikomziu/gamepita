@@ -1,4 +1,4 @@
-# GamePita（ゲームピタ） v1.4.0
+# GamePita（ゲームピタ） v1.5.0
 
 自分に合うゲームを、ピタっと見つける。好きなゲームを紹介し合う記事サイト。素の HTML/CSS/JS（`template.html` `style.css` `render.js` `app.js`）。
 
@@ -26,10 +26,19 @@
   参考価格・販売ページ URL（`rel="sponsored nofollow"`）・PR 表示（提供・依頼を受けた紹介）。売り買い・交換の呼びかけは禁止（規約・ルールに明記）。
   RPC は `gp_goods_list` `gp_goods_get` `gp_goods_save` `gp_goods_delete` `gp_goods_like` `gp_goods_comment_add` `gp_goods_comment_delete` `gp_goods_export`。
   通報・通知・管理画面・プロフィールも商品に対応（`supabase/v1_4_goods.sql`）。
+- v1.5.0（`supabase/v1_5_social.sql`）:
+  - ⭐ ほしいもの（商品、`gp_goods_wants`）・🔖 あとで読む（記事・商品、`gp_bookmarks`）。マイリスト `/mylist/?t=read|want|follow` にタブで表示（`gp_my_lists`）。
+  - ⚖️ 商品の比較 `/goods/compare/`（3つまで。リストは端末の `gp_compare` に保存）。
+  - 🏆 ランキング `/ranking/?k=post|goods&p=week|month|all`（期間中にもらったピタっと！の数、`gp_ranking`）。
+  - ☁️ 下書きをアカウントにも保存（`gp_drafts`、記事・商品で1つずつ。端末の下書きより新しければそちらを使う）。
+  - 🎯 お題企画 `/theme/`（管理画面で作成、`gp_themes`。トップとブログ一覧にバナー、`/new/?tag=` でタグを自動で入れる）。
+  - 👤 フォロー（`gp_follows`、プロフィールと記事ページにボタン。フォロー中の人の新しい投稿を🔔で通知）。
+  - 😂💡🎮 リアクション（記事・商品、`gp_reactions`）。ボタンの状態は `gp_item_state` でまとめて取る。
+  - 🛡️ 管理者に新しい投稿を🔔で通知し、管理画面に「新しい投稿（14日以内）」を表示（`gp_admin_new_items`）。
 
 ## URL（ページ分け）
 `/`トップ ・ `/blog/` ブログ一覧（`?q=` `?tag=` `?sort=`）・ `/blog/123/` 記事 ・ `/blog/123/edit/` 編集 ・ `/genre/rpg/` ジャンル別 ・
-`/shindan/` 診断 ・ `/shindan/type/<slug>/` 診断タイプ ・ `/game/<id>/` ゲーム ・ `/mylist/` マイリスト ・ `/user/ユーザー名/` 書いた人 ・ `/new/` 書く ・ `/goods/` 商品紹介 ・ `/goods/category/acc/` 種類別 ・ `/goods/12/` 商品 ・ `/goods/new/` 商品を紹介する ・ `/rules/` ルール ・ `/admin/` 管理。
+`/shindan/` 診断 ・ `/shindan/type/<slug>/` 診断タイプ ・ `/game/<id>/` ゲーム ・ `/mylist/` マイリスト ・ `/user/ユーザー名/` 書いた人 ・ `/new/` 書く ・ `/goods/` 商品紹介 ・ `/goods/category/acc/` 種類別 ・ `/goods/12/` 商品 ・ `/goods/new/` 商品を紹介する ・ `/goods/compare/` 比較 ・ `/ranking/` ランキング ・ `/theme/` お題企画 ・ `/rules/` ルール ・ `/admin/` 管理。
 画面の切りかえは History API（app.js の `route()`）。前の `#/p/1` 形式は新しい URL に転送する。
 
 ## 検索エンジン向け（静的ページの生成）
