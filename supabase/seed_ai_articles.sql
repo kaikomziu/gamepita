@@ -1,5 +1,5 @@
 -- 有名ゲームの紹介記事（タグ「AI記事」）。投稿者は GamePita AI編集部（gamepita_ai、ログイン不可のアカウント）
--- 2026-11-13 登録。ゲーム名は正式名称。画像は著作権に配慮して貼らない（ジャンルの絵文字が表示される）
+-- 2026-11-13 登録。ゲーム名は正式名称。公式画像は著作権に配慮して使わず、表紙は tools/make_covers.py で作ったオリジナル画像（covers/ai-*.png）を cover_url に設定
 with a as (select id from public.ka_accounts where username = 'gamepita_ai')
 insert into public.gp_posts (ka_id, title, game, genre, tags, platforms, players, length, difficulty, price, rating, body, official_url)
 select a.id, v.title, v.game, v.genre, v.tags, v.platforms, v.players, v.length, v.difficulty, v.price, v.rating, v.body, v.official_url
@@ -159,3 +159,10 @@ $b$※この記事は GamePita の AI 編集部が書いた紹介記事です。
  'https://www.innersloth.com/games/among-us/')
 ) as v(title, game, genre, tags, platforms, players, length, difficulty, price, rating, body, official_url)
 returning id, game, game_id;
+
+-- 表紙画像（オリジナル、tools/make_covers.py で生成）を設定
+update public.gp_posts p set cover_url = 'https://kaikomziu.github.io/gamepita/covers/ai-' || v.slug || '.png'
+from (values ('Minecraft','minecraft'),('フォートナイト','fortnite'),('スプラトゥーン3','splatoon3'),('あつまれ どうぶつの森','animal-crossing'),
+  ('大乱闘スマッシュブラザーズ SPECIAL','smash-bros'),('マリオカート8 デラックス','mario-kart'),
+  ('ゼルダの伝説 ティアーズ オブ ザ キングダム','zelda-totk'),('Among Us','among-us')) v(game, slug)
+where p.game = v.game and p.ka_id = (select id from public.ka_accounts where username = 'gamepita_ai');

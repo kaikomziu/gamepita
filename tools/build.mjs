@@ -83,6 +83,7 @@ await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
 for (const f of ['style.css', 'app.js', 'render.js', 'theme.js', 'icon.svg', 'ogp.png']) await copyFile(join(ROOT, f), join(OUT, f));
 await cp(join(ROOT, 'ogp'), join(OUT, 'ogp'), { recursive: true });
+await cp(join(ROOT, 'covers'), join(OUT, 'covers'), { recursive: true });
 
 const sitemap = []; // [url, lastmod]
 const latest = d => d.reduce((a, p) => (p.updated_at > a ? p.updated_at : a), '');
