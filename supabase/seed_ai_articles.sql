@@ -166,3 +166,12 @@ from (values ('Minecraft','minecraft'),('フォートナイト','fortnite'),('�
   ('大乱闘スマッシュブラザーズ SPECIAL','smash-bros'),('マリオカート8 デラックス','mario-kart'),
   ('ゼルダの伝説 ティアーズ オブ ザ キングダム','zelda-totk'),('Among Us','among-us')) v(game, slug)
 where p.game = v.game and p.ka_id = (select id from public.ka_accounts where username = 'gamepita_ai');
+
+-- 公式素材の利用が認められている2本は公式画像に差し替え（2026-11-13、外部の公式 URL を直接表示）
+--   フォートナイト：Epic ファンコンテンツポリシー（非営利のファンサイト可、指定の免責文が必要）→ 本文末に免責文
+--   Among Us：Innersloth ファン創作ポリシー（個人・非営利の利用可）＋公式プレスキットの画像
+-- Minecraft（公式の宣伝画像の使用は明記なし）と任天堂の5本（ガイドラインはゲーム画面の撮影・投稿のみ）はオリジナル画像のまま
+update public.gp_posts p set cover_url = 'https://cms-assets.unrealengine.com/cm6l5gfpm05kr07my04cqgy2x/cmfo4y74z03yw07ohsjgs0qj7'
+where p.game = 'フォートナイト' and p.ka_id = (select id from public.ka_accounts where username = 'gamepita_ai');
+update public.gp_posts p set cover_url = 'https://www.innersloth.com/wp-content/uploads/2021/06/15player_promo_noText-1024x576.png'
+where p.game = 'Among Us' and p.ka_id = (select id from public.ka_accounts where username = 'gamepita_ai');
