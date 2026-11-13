@@ -3,7 +3,7 @@
 // URL は /blog/123/ のような本物のパス（History API）。公開ページは tools/build.mjs が静的 HTML も作る。
 (() => {
   'use strict';
-  const VERSION = '1.3.0';
+  const VERSION = '1.4.0';
   const SUPABASE_URL = 'https://kifnzvktwbomxthzvvgy.supabase.co';
   // 公開用キー（ブラウザに置いてよいキー。テーブルは RLS で閉じていて RPC しか呼べない）
   const SUPABASE_KEY = 'sb_publishable_Ea_sHRg6wMwO9YkDTjgOog_stQT1mfq';
@@ -11,7 +11,7 @@
   const R = window.GPRender;
   const { GENRES, GENRE_EMOJI, GENRE_SLUG, SLUG_GENRE, PLATFORMS, PLAYERS, LENGTHS, DIFFS, PRICES,
     esc, fmtDate, safeUrl, youtubeId, isImageUrl, renderBody, plainText, userUrl, genreUrl, postUrl,
-    MARKS, TYPES, typeOf, gameUrl, typeUrl, badgesHtml } = R;
+    MARKS, TYPES, typeOf, gameUrl, typeUrl, badgesHtml, GOODS_CATS, goodsUrl, goodsCatUrl } = R;
   // サイトの根元（例 "/gamepita/"）と公開 URL（canonical・共有用）
   const me$ = document.currentScript;
   const BASE = (me$ && me$.dataset.base) || '/';
@@ -41,6 +41,10 @@
     bad: '入力の形がおかしいようです。',
     name: 'お名前（ニックネーム）は1〜40文字で書いてください。',
     inquiry: 'お問い合わせの内容は1〜2000文字で書いてください。',
+    goods_name: '商品名は1〜80文字にしてください。',
+    category: '商品の種類を選んでください。',
+    maker: 'メーカー名は40文字までです。',
+    price: '参考価格は 0〜10,000,000 円の数字で書いてください（わからなければ空でOK）。',
   };
   const reasonText = r => REASONS[r] || 'うまくいきませんでした。もう一度ためしてください。';
 
@@ -67,6 +71,7 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), 3200);
   }
   const card = p => R.cardHtml(p, BASE);
+  const gcard = g => R.goodsCardHtml(g, BASE);
 
   // ---------- タイトル・説明文・canonical ----------
   const DEFAULT_DESC = '好きなゲームを紹介し合うサイト。だれでも記事を書けて、ピタっと診断で自分に合うゲームが見つかります。';
@@ -162,7 +167,7 @@
         ${x.kind === 'reply' ? `<a class="notif ${x.unread ? 'unread' : ''}" href="${BASE}contact/" data-close>
           📮 <b>お問い合わせに返信がありました</b><span class="small">${esc(ago(x.at))}</span>
           ${x.body ? `<span class="small">${esc(x.body)}</span>` : ''}</a>`
-        : `<a class="notif ${x.unread ? 'unread' : ''}" href="${esc(postUrl(BASE, x.post_id))}" data-close>
+        : `<a class="notif ${x.unread ? 'unread' : ''}" href="${esc(x.goods_id ? goodsUrl(BASE, x.goods_id) : postUrl(BASE, x.post_id))}" data-close>
           ${esc(x.who?.avatar || '😀')} <b>${esc(x.who?.display_name || x.who?.username || 'だれか')}</b> さんが
           ${x.kind === 'comment' ? '💬 コメントしました' : '🧩 ピタっと！しました'}
           <span class="small">「${esc(x.post_title || '')}」・${esc(ago(x.at))}</span>
@@ -265,6 +270,9 @@
       <h2 class="section-title">🆕 新着の記事</h2>
       <div id="newList" class="grid"><div class="loading">読み込み中…</div></div>
       <div class="more"><a class="btn" href="${BASE}blog/">📚 記事をもっと見る</a></div>
+      <h2 class="section-title">🛍️ 新着の商品紹介</h2>
+      <div id="goodsNew" class="grid"><div class="loading">読み込み中…</div></div>
+      <div class="more"><a class="btn" href="${BASE}goods/">🛍️ 商品紹介をもっと見る</a></div>
       <h2 class="section-title">🧩 ピタっと！が多い記事</h2>
       <div id="popList" class="grid"><div class="loading">読み込み中…</div></div>
       <h2 class="section-title">🎮 ジャンルからさがす</h2>
@@ -282,6 +290,12 @@
       } catch { const el = $(id); if (el) el.innerHTML = '<div class="empty" style="grid-column:1/-1">読み込めませんでした。</div>'; }
     };
     fill('newList', 'new'); fill('popList', 'popular');
+    rpc('gp_goods_list', { p_q: null, p_category: null, p_tag: null, p_author: null, p_sort: 'new', p_offset: 0 }).then(r => {
+      const el = $('goodsNew'); if (!el) return;
+      const items = r.items.slice(0, 4);
+      el.innerHTML = items.length ? items.map(gcard).join('')
+        : `<div class="empty" style="grid-column:1/-1">まだ商品紹介がありません。<br><a class="btn btn-primary" href="${BASE}goods/new/" style="margin-top:12px">🛍️ 最初の商品を紹介する</a></div>`;
+    }).catch(() => { const el = $('goodsNew'); if (el) el.innerHTML = ''; });
     loadTags();
   }
   function loadTags() {
@@ -460,6 +474,43 @@
       </div><p class="comment-body">${esc(c.body)}</p></div>`;
   }
 
+  // ---------- 本文エディタのツール（見出し・太字・画像・YouTube・リンク） ----------
+  function bindBodyTools(form, body, changed) {
+    const insert = text => {
+      const s = body.selectionStart, e = body.selectionEnd, v = body.value;
+      const before = v.slice(0, s), needNl = before && !before.endsWith('\n');
+      // 見出し・埋め込みは行の頭に置く必要があるので、途中なら改行を足す
+      const ins = (needNl && /^(##|https|画像)/.test(text) ? '\n' : '') + text;
+      body.value = before + ins + v.slice(e); body.focus();
+      body.selectionStart = body.selectionEnd = s + ins.length; changed();
+    };
+    form.querySelectorAll('[data-ins]').forEach(b => b.addEventListener('click', () => insert(b.dataset.ins)));
+    form.querySelectorAll('[data-ask]').forEach(b => b.addEventListener('click', () => {
+      const kind = b.dataset.ask;
+      const label = { img: '画像の URL', yt: 'YouTube 動画の URL', link: 'リンクする URL' }[kind];
+      openModal(`<h2>${esc(label)}を入れる</h2><input type="url" id="askUrl" maxlength="500" placeholder="https://…">
+        <p class="err" id="askErr"></p><div class="form-actions"><button class="btn btn-ghost" type="button" data-close>やめる</button>
+        <button class="btn btn-primary" type="button" id="askOk">入れる</button></div>`);
+      $('askUrl').focus();
+      const ok = () => {
+        const u = safeUrl($('askUrl').value.trim());
+        if (!u) { $('askErr').textContent = REASONS.url; return; }
+        if (kind === 'yt' && !youtubeId(u)) { $('askErr').textContent = 'YouTube の動画 URL ではないようです。'; return; }
+        closeModal();
+        insert(`${kind === 'img' && !isImageUrl(u) ? '画像: ' : ''}${u}\n`);
+      };
+      $('askOk').onclick = ok;
+      $('askUrl').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ok(); } });
+    }));
+  }
+  const BODY_TOOLS = `<div class="editor-tools">
+      <button class="btn btn-sm" type="button" data-ins="## ">見出し</button>
+      <button class="btn btn-sm" type="button" data-ins="**太字**">太字</button>
+      <button class="btn btn-sm" type="button" data-ask="img">🖼️ 画像</button>
+      <button class="btn btn-sm" type="button" data-ask="yt">▶️ YouTube</button>
+      <button class="btn btn-sm" type="button" data-ask="link">🔗 リンク</button>
+    </div>`;
+
   // ---------- 記事を書く・直す ----------
   const DRAFT_KEY = 'gp_draft';
   async function renderEditor(editId) {
@@ -561,33 +612,7 @@
     };
     $('fCover').addEventListener('change', updCover); updCover();
 
-    // 本文に文字を差し込む
-    const insert = text => {
-      const s = body.selectionStart, e = body.selectionEnd, v = body.value;
-      const before = v.slice(0, s), needNl = before && !before.endsWith('\n');
-      // 見出し・埋め込みは行の頭に置く必要があるので、途中なら改行を足す
-      const ins = (needNl && /^(##|https|画像)/.test(text) ? '\n' : '') + text;
-      body.value = before + ins + v.slice(e); body.focus();
-      body.selectionStart = body.selectionEnd = s + ins.length; upd(); saveDraft();
-    };
-    $('postForm').querySelectorAll('[data-ins]').forEach(b => b.addEventListener('click', () => insert(b.dataset.ins)));
-    $('postForm').querySelectorAll('[data-ask]').forEach(b => b.addEventListener('click', () => {
-      const kind = b.dataset.ask;
-      const label = { img: '画像の URL', yt: 'YouTube 動画の URL', link: 'リンクする URL' }[kind];
-      openModal(`<h2>${esc(label)}を入れる</h2><input type="url" id="askUrl" maxlength="500" placeholder="https://…">
-        <p class="err" id="askErr"></p><div class="form-actions"><button class="btn btn-ghost" type="button" data-close>やめる</button>
-        <button class="btn btn-primary" type="button" id="askOk">入れる</button></div>`);
-      $('askUrl').focus();
-      const ok = () => {
-        const u = safeUrl($('askUrl').value.trim());
-        if (!u) { $('askErr').textContent = REASONS.url; return; }
-        if (kind === 'yt' && !youtubeId(u)) { $('askErr').textContent = 'YouTube の動画 URL ではないようです。'; return; }
-        closeModal();
-        insert(`${kind === 'img' && !isImageUrl(u) ? '画像: ' : ''}${u}\n`);
-      };
-      $('askOk').onclick = ok;
-      $('askUrl').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ok(); } });
-    }));
+    bindBodyTools($('postForm'), body, () => { upd(); saveDraft(); });
 
     const collect = () => ({
       title: $('fTitle').value.trim(), game: $('fGame').value.trim(),
@@ -793,8 +818,9 @@
   async function renderProfile(username) {
     app.innerHTML = '<div class="loading">読み込み中…</div>';
     try {
-      const [pr, list] = await Promise.all([rpc('gp_profile', { p_username: username }),
-        rpc('gp_list', { p_q: null, p_genre: null, p_tag: null, p_author: username, p_sort: 'new', p_offset: 0 })]);
+      const [pr, list, goods] = await Promise.all([rpc('gp_profile', { p_username: username }),
+        rpc('gp_list', { p_q: null, p_genre: null, p_tag: null, p_author: username, p_sort: 'new', p_offset: 0 }),
+        rpc('gp_goods_list', { p_q: null, p_category: null, p_tag: null, p_author: username, p_sort: 'new', p_offset: 0 }).catch(() => ({ items: [] }))]);
       if (!pr.ok) { setMeta({ title: 'ユーザーが見つかりません', noindex: true, path: userUrl(BASE, username) }); app.innerHTML = '<div class="empty">ユーザーが見つかりませんでした。</div>'; return; }
       const a = pr.author;
       const name = a.display_name || a.username;
@@ -803,7 +829,8 @@
         <div><h1>${esc(name)}</h1><div class="small">@${esc(a.username)} ／ 記事 ${Number(pr.posts)} 件 ／ もらったピタっと！ ${Number(pr.likes)}</div>
         ${pr.badges?.length ? `<div class="badges" style="margin-top:6px">${badgesHtml(pr.badges)}</div>` : ''}</div></section>
         <div class="grid">${list.items.length ? list.items.map(card).join('') : '<div class="empty" style="grid-column:1/-1">まだ記事がありません。</div>'}</div>
-        ${list.more ? '<p class="small" style="text-align:center">最新の24件を表示しています。</p>' : ''}`;
+        ${list.more ? '<p class="small" style="text-align:center">最新の24件を表示しています。</p>' : ''}
+        ${goods.items.length ? `<h2 class="section-title">🛍️ 紹介した商品</h2><div class="grid">${goods.items.map(gcard).join('')}</div>` : ''}`;
     } catch { app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; }
   }
 
@@ -827,12 +854,13 @@
         <div id="admInq"><div class="loading">読み込み中…</div></div>
         <h2 class="section-title">🚩 通報の一覧（${r.reports.length}）</h2>
         ${r.reports.length ? r.reports.map(x => `<div class="report-item">
-          <div class="small">${esc(fmtDate(x.created_at))} ／ ${x.target === 'post' ? '記事' : 'コメント'} ／ 通報者: ${esc(x.reporter?.display_name || '?')}</div>
+          <div class="small">${esc(fmtDate(x.created_at))} ／ ${esc({ post: '記事', comment: 'コメント', goods: '商品紹介', goods_comment: '商品紹介へのコメント' }[x.target] || '')} ／ 通報者: ${esc(x.reporter?.display_name || '?')}</div>
           <div><b>${esc(x.text ?? '（消えています）')}</b></div>
           <div>理由: ${esc(x.reason)}</div>
           <div class="actions" style="margin-top:8px;padding-top:8px">
             ${x.post_id ? `<a class="btn btn-sm" href="${esc(postUrl(BASE, x.post_id))}">開く</a>` : ''}
-            <button class="btn btn-sm btn-danger" type="button" data-rm="${esc(x.target)}:${Number(x.target_id)}">${x.target === 'post' ? '記事を非表示' : 'コメントを削除'}</button>
+            ${x.goods_id ? `<a class="btn btn-sm" href="${esc(goodsUrl(BASE, x.goods_id))}">開く</a>` : ''}
+            <button class="btn btn-sm btn-danger" type="button" data-rm="${esc(x.target)}:${Number(x.target_id)}">${x.target === 'post' || x.target === 'goods' ? '非表示にする' : 'コメントを削除'}</button>
             <button class="btn btn-sm" type="button" data-dismiss="${Number(x.id)}">問題なし（片づける）</button>
           </div></div>`).join('') : '<div class="empty">通報はありません。</div>'}`;
       loadAdminInquiries();
@@ -852,10 +880,12 @@
       }));
       app.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', async () => {
         const [target, idStr] = b.dataset.rm.split(':'); const tid = Number(idStr);
-        if (!(await confirmBox(target === 'post' ? 'この記事を非表示にしますか？' : 'このコメントを削除しますか？', '実行する', true))) return;
+        const isItem = target === 'post' || target === 'goods';
+        if (!(await confirmBox(isItem ? 'この投稿を非表示にしますか？' : 'このコメントを削除しますか？', '実行する', true))) return;
         try {
-          const x = target === 'post' ? await rpc('gp_post_delete', { p_token: token(), p_id: tid })
-            : await rpc('gp_comment_delete', { p_token: token(), p_cid: tid });
+          const fn = { post: 'gp_post_delete', comment: 'gp_comment_delete', goods: 'gp_goods_delete', goods_comment: 'gp_goods_comment_delete' }[target];
+          if (!fn) return;
+          const x = await rpc(fn, isItem ? { p_token: token(), p_id: tid } : { p_token: token(), p_cid: tid });
           if (!x.ok) toast(reasonText(x.reason));
         } catch { toast('通信できませんでした'); }
         renderAdmin();
@@ -886,6 +916,274 @@
     }));
   }
 
+  // ---------- 商品紹介：一覧・種類別 ----------
+  const goodsState = { q: '', cat: '', tag: '', sort: 'new' };
+  function goodsListUrl(over = {}) {
+    const s = { ...goodsState, ...over }; const qs = new URLSearchParams();
+    if (s.q) qs.set('q', s.q); if (s.tag) qs.set('tag', s.tag); if (s.sort && s.sort !== 'new') qs.set('sort', s.sort);
+    const str = qs.toString();
+    return (s.cat ? goodsCatUrl(BASE, s.cat) : `${BASE}goods/`) + (str ? `?${str}` : '');
+  }
+  async function renderGoodsList(cat) {
+    const qs = new URLSearchParams(location.search);
+    goodsState.cat = cat || '';
+    goodsState.q = (qs.get('q') || '').slice(0, 50);
+    goodsState.tag = (qs.get('tag') || '').slice(0, 20);
+    goodsState.sort = ['new', 'popular', 'rating'].includes(qs.get('sort')) ? qs.get('sort') : 'new';
+    const c = cat ? GOODS_CATS[cat] : null;
+    const filtered = goodsState.q || goodsState.tag || goodsState.sort !== 'new';
+    setMeta({
+      title: c ? `${c.t}のおすすめ・紹介` : (goodsState.tag ? `#${goodsState.tag} の商品紹介` : '商品紹介（ゲーム・周辺機器・グッズ）'),
+      desc: c ? `みんながおすすめする${c.t}の紹介。GamePita の商品紹介の一覧です。`
+        : 'ゲームソフト・ゲーム機・周辺機器・グッズ・攻略本など、みんながおすすめする商品の紹介の一覧です。',
+      path: cat ? goodsCatUrl(BASE, cat) : `${BASE}goods/`, noindex: !!filtered,
+    });
+    app.innerHTML = `
+      <h1 class="page-title">${c ? `${c.e} ${esc(c.t)}のおすすめ` : '🛍️ 商品紹介'}</h1>
+      <p class="small">ゲームソフト・ゲーム機・コントローラー・グッズ・攻略本など、「買ってよかった！」をみんなで紹介するコーナーです。</p>
+      <div class="more" style="margin:8px 0 14px"><a class="btn btn-primary" href="${BASE}goods/new/">🛍️ 商品を紹介する</a></div>
+      <form class="toolbar" id="searchForm" role="search">
+        <div class="search"><input type="search" id="q" placeholder="商品名・メーカー・キーワードでさがす" maxlength="50" value="${esc(goodsState.q)}">
+          <button type="submit" aria-label="検索">🔍</button></div>
+        <select id="sort" aria-label="並べ替え">
+          <option value="new">新しい順</option><option value="popular">ピタっと！が多い順</option><option value="rating">おすすめ度順</option>
+        </select>
+      </form>
+      ${R.goodsCatLinksHtml(BASE, cat || '')}
+      ${goodsState.tag ? `<div class="filter-note">タグ <b>#${esc(goodsState.tag)}</b> <a class="btn btn-sm btn-ghost" href="${esc(goodsListUrl({ tag: '' }))}">✕ 解除</a></div>` : ''}
+      ${goodsState.q ? `<div class="filter-note">「<b>${esc(goodsState.q)}</b>」の検索結果 <a class="btn btn-sm btn-ghost" href="${esc(goodsListUrl({ q: '' }))}">✕ 解除</a></div>` : ''}
+      <div id="list" class="grid"><div class="loading">読み込み中…</div></div>
+      <div class="more hidden" id="moreWrap"><button class="btn" type="button" id="moreBtn">もっと見る</button></div>`;
+    $('sort').value = goodsState.sort;
+    $('searchForm').addEventListener('submit', e => { e.preventDefault(); go(goodsListUrl({ q: $('q').value.trim() })); });
+    $('sort').addEventListener('change', () => go(goodsListUrl({ sort: $('sort').value })));
+    let offset = 0;
+    const load = async () => {
+      try {
+        const r = await rpc('gp_goods_list', { p_q: goodsState.q || null, p_category: goodsState.cat || null, p_tag: goodsState.tag || null,
+          p_author: null, p_sort: goodsState.sort, p_offset: offset });
+        const list = $('list'); if (!list) return;
+        if (offset === 0) list.innerHTML = '';
+        if (!r.items.length && offset === 0) {
+          list.innerHTML = `<div class="empty" style="grid-column:1/-1">${filtered || cat ? '条件に合う商品紹介が見つかりませんでした。' : 'まだ商品紹介がありません。'}<br>
+            <a class="btn btn-primary" href="${BASE}goods/new/" style="margin-top:12px">🛍️ 商品を紹介する</a></div>`;
+        }
+        list.insertAdjacentHTML('beforeend', r.items.map(gcard).join(''));
+        offset += r.items.length;
+        $('moreWrap').classList.toggle('hidden', !r.more);
+      } catch {
+        const list = $('list'); if (list) list.innerHTML = '<div class="empty" style="grid-column:1/-1">読み込めませんでした。通信を確かめて、もう一度開いてください。</div>';
+      }
+    };
+    $('moreBtn').addEventListener('click', async e => { e.target.disabled = true; await load(); e.target.disabled = false; });
+    load();
+  }
+
+  // ---------- 商品紹介：1件 ----------
+  async function renderGoods(id) {
+    if (!app.querySelector('.article')) app.innerHTML = '<div class="loading">読み込み中…</div>';
+    let r;
+    try { r = await rpc('gp_goods_get', { p_token: token(), p_id: id }); } catch { if (!app.querySelector('.article')) app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; return; }
+    if (!r.ok) {
+      setMeta({ title: '商品紹介が見つかりません', noindex: true, path: goodsUrl(BASE, id) });
+      app.innerHTML = `<div class="empty">${esc(reasonText(r.reason))}<br><a href="${BASE}goods/">商品紹介の一覧へ</a></div>`; return;
+    }
+    const g = r.item;
+    setMeta({ title: `${g.title}（${g.name}）`, desc: plainText(g.body, 110) || DEFAULT_DESC, path: goodsUrl(BASE, g.id), noindex: g.status !== 'public' });
+    const shareUrl = abs(goodsUrl(BASE, g.id));
+    app.innerHTML = `
+      <article class="article">
+        ${R.goodsCoverHtml(g)}
+        <div class="article-in">
+          ${g.status === 'removed' ? '<div class="removed-note">この商品紹介は管理者により非表示になっています（管理者だけに見えています）。</div>' : ''}
+          ${R.goodsInner(g, BASE)}
+          <div class="actions">
+            <button class="btn pita ${g.liked ? 'on' : ''}" type="button" id="pitaBtn" aria-pressed="${g.liked ? 'true' : 'false'}">🧩 ピタっと！ <b id="pitaN">${Number(g.likes) || 0}</b></button>
+            <button class="btn btn-sm" type="button" id="copyBtn">🔗 リンクをコピー</button>
+            <a class="btn btn-sm" target="_blank" rel="noopener noreferrer" href="https://twitter.com/intent/tweet?text=${encodeURIComponent(`${g.title}｜GamePita`)}&url=${encodeURIComponent(shareUrl)}">𝕏 ポスト</a>
+            <span style="flex:1"></span>
+            ${g.mine ? `<a class="btn btn-sm" href="${esc(goodsUrl(BASE, g.id))}edit/">✏️ 編集</a>` : ''}
+            ${g.mine || (r.is_admin && g.status === 'public') ? `<button class="btn btn-sm btn-danger" type="button" id="delBtn">🗑️ ${g.mine ? '削除' : '非表示（管理）'}</button>` : ''}
+            ${!g.mine ? '<button class="btn btn-sm btn-ghost" type="button" id="repBtn">🚩 通報</button>' : ''}
+          </div>
+        </div>
+      </article>
+      <section class="comments">
+        <h2>💬 コメント（${r.comments.length}）</h2>
+        <div id="commentList">${r.comments.length ? r.comments.map(commentHtml).join('') : '<p class="small">まだコメントはありません。</p>'}</div>
+        <form class="comment-form" id="commentForm">
+          <textarea id="commentText" rows="2" maxlength="500" placeholder="${token() ? 'コメントを書く（500文字まで）' : 'ログインするとコメントできます'}"></textarea>
+          <button class="btn btn-primary" type="submit">送信</button>
+        </form>
+      </section>
+      <p style="text-align:center;margin-top:18px"><a href="${BASE}goods/">← 商品紹介の一覧へ</a></p>`;
+
+    $('pitaBtn').addEventListener('click', async () => {
+      if (!(await requireLogin())) return;
+      try {
+        const x = await rpc('gp_goods_like', { p_token: token(), p_id: g.id });
+        if (!x.ok) { toast(reasonText(x.reason)); return; }
+        $('pitaBtn').classList.toggle('on', x.liked); $('pitaBtn').setAttribute('aria-pressed', String(x.liked));
+        $('pitaN').textContent = x.likes;
+        if (x.liked) toast('🧩 ピタっと！しました');
+      } catch { toast('通信できませんでした'); }
+    });
+    $('copyBtn').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(shareUrl); toast('リンクをコピーしました'); } catch { toast(shareUrl); }
+    });
+    $('delBtn')?.addEventListener('click', async () => {
+      const ok = await confirmBox(g.mine ? 'この商品紹介を削除します。元に戻せません。よろしいですか？' : 'この商品紹介を非表示にします（管理者操作）。', g.mine ? '削除する' : '非表示にする', true);
+      if (!ok) return;
+      try {
+        const x = await rpc('gp_goods_delete', { p_token: token(), p_id: g.id });
+        if (!x.ok) { toast(reasonText(x.reason)); return; }
+        toast(g.mine ? '削除しました' : '非表示にしました'); go(`${BASE}goods/`);
+      } catch { toast('通信できませんでした'); }
+    });
+    $('repBtn')?.addEventListener('click', () => reportBox('goods', g.id));
+    $('commentForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      if (!(await requireLogin())) return;
+      const body = $('commentText').value.trim();
+      if (!body) { toast(REASONS.comment); return; }
+      const btn = e.submitter || e.target.querySelector('button'); btn.disabled = true;
+      try {
+        const x = await rpc('gp_goods_comment_add', { p_token: token(), p_id: g.id, p_body: body });
+        if (!x.ok) { toast(reasonText(x.reason)); return; }
+        renderGoods(id);
+      } catch { toast('通信できませんでした'); } finally { btn.disabled = false; }
+    });
+    $('commentList').addEventListener('click', async e => {
+      const del = e.target.closest('[data-cdel]'); const rep = e.target.closest('[data-crep]');
+      if (del) {
+        if (!(await confirmBox('このコメントを削除しますか？', '削除する', true))) return;
+        try {
+          const x = await rpc('gp_goods_comment_delete', { p_token: token(), p_cid: Number(del.dataset.cdel) });
+          if (!x.ok) { toast(reasonText(x.reason)); return; }
+          renderGoods(id);
+        } catch { toast('通信できませんでした'); }
+      } else if (rep) reportBox('goods_comment', Number(rep.dataset.crep));
+    });
+  }
+
+  // ---------- 商品紹介：書く・直す ----------
+  const GOODS_DRAFT_KEY = 'gp_goods_draft';
+  async function renderGoodsEditor(editId) {
+    setMeta({ title: editId ? '商品紹介を編集' : '商品を紹介する', noindex: true, path: editId ? `${goodsUrl(BASE, editId)}edit/` : `${BASE}goods/new/` });
+    if (!token()) {
+      app.innerHTML = `<div class="empty">商品を紹介するには、かるわかGAMESアカウントでログインしてください。<br>
+        <button class="btn btn-primary" type="button" id="loginGo" style="margin-top:12px">ログイン / 新規登録</button></div>`;
+      $('loginGo').onclick = async () => { if (await requireLogin()) route(); };
+      return;
+    }
+    let data = { title: '', name: '', category: '', maker: '', price: null, rating: 0, body: '', image_url: '', shop_url: '', tags: [], pr: false };
+    if (editId) {
+      app.innerHTML = '<div class="loading">読み込み中…</div>';
+      try {
+        const r = await rpc('gp_goods_get', { p_token: token(), p_id: editId });
+        if (!r.ok || !r.item.mine) { app.innerHTML = `<div class="empty">${esc(r.ok ? REASONS.forbidden : reasonText(r.reason))}</div>`; return; }
+        data = { ...data, ...r.item, maker: r.item.maker || '', image_url: r.item.image_url || '', shop_url: r.item.shop_url || '' };
+      } catch { app.innerHTML = '<div class="empty">読み込めませんでした。</div>'; return; }
+    } else {
+      try { const d = JSON.parse(localStorage.getItem(GOODS_DRAFT_KEY) || 'null'); if (d && typeof d === 'object') data = { ...data, ...d }; } catch { /* 下書きが壊れていたら無視 */ }
+    }
+    app.innerHTML = `
+      <form class="form" id="goodsForm" novalidate>
+        <h1>${editId ? '✏️ 商品紹介を編集' : '🛍️ おすすめの商品を紹介する'}</h1>
+        <p class="small">ゲームソフト・ゲーム機・コントローラー・ヘッドホン・グッズ・攻略本など、実際に使ってよかったものを紹介しよう。</p>
+        <div class="row2">
+          <div class="field"><label for="gName">商品名 <span class="hint">必須・80文字まで</span></label>
+            <input type="text" id="gName" maxlength="80" value="${esc(data.name)}" placeholder="例: Nintendo Switch Proコントローラー"></div>
+          <div class="field"><label for="gTitle">紹介のタイトル <span class="hint">必須・60文字まで</span></label>
+            <input type="text" id="gTitle" maxlength="60" value="${esc(data.title)}" placeholder="例: 長時間遊んでも手が疲れにくい！"></div>
+        </div>
+        <div class="field"><span class="label">種類 <span class="hint">必須</span></span>
+          <div class="opts">${Object.entries(GOODS_CATS).map(([k, c]) => `<label class="opt"><input type="radio" name="category" value="${k}" ${data.category === k ? 'checked' : ''}><span>${c.e} ${esc(c.t)}</span></label>`).join('')}</div></div>
+        <div class="row2">
+          <div class="field"><label for="gMaker">メーカー <span class="hint">任意・40文字まで</span></label>
+            <input type="text" id="gMaker" maxlength="40" value="${esc(data.maker)}" placeholder="例: 任天堂"></div>
+          <div class="field"><label for="gPrice">参考価格（円） <span class="hint">任意・数字だけ</span></label>
+            <input type="text" id="gPrice" inputmode="numeric" maxlength="9" value="${data.price != null ? esc(String(data.price)) : ''}" placeholder="例: 7678"></div>
+        </div>
+        <div class="field"><span class="label">おすすめ度</span>
+          <div class="star-input" id="starInput">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-n="${n}" aria-label="${n}つ星" class="${n <= data.rating ? 'on' : ''}">★</button>`).join('')}</div></div>
+        <div class="row2">
+          <div class="field"><label for="gImage">商品の画像の URL <span class="hint">任意・https のみ</span></label>
+            <input type="url" id="gImage" maxlength="500" value="${esc(data.image_url)}" placeholder="https://…/image.jpg">
+            <span class="small">メーカーの公式サイトの画像や、自分で撮った写真の URL を使ってね。</span>
+            <div class="cover-preview" id="imgPrev"></div></div>
+          <div class="field"><label for="gShop">販売ページ・公式ページの URL <span class="hint">任意・https のみ</span></label>
+            <input type="url" id="gShop" maxlength="500" value="${esc(data.shop_url)}" placeholder="https://…"></div>
+        </div>
+        <div class="field"><label for="gTags">タグ <span class="hint">スペースか , で区切る・5個まで</span></label>
+          <input type="text" id="gTags" maxlength="120" value="${esc((data.tags || []).join(' '))}" placeholder="例: コントローラー Switch 快適"></div>
+        <div class="field"><label for="gBody">本文 <span class="hint">必須・8000文字まで</span></label>
+          ${BODY_TOOLS}
+          <div class="editor">
+            <div><textarea id="gBody" maxlength="8000" placeholder="どこがよかったか、どんな人におすすめか、気になったところなどを書こう！&#10;&#10;URL だけの行は自動で埋め込まれます（画像・YouTube・リンク）。">${esc(data.body)}</textarea>
+              <div class="count" id="bodyCount"></div></div>
+            <div><div class="preview-label">プレビュー</div><div class="preview body" id="preview"></div></div>
+          </div>
+        </div>
+        <div class="field"><label class="opt pr-opt"><input type="checkbox" id="gPr" ${data.pr ? 'checked' : ''}>
+          <span>📢 メーカーなどから、この商品やお金をもらったり、紹介を頼まれたりして書いた（「PR」と表示されます）</span></label></div>
+        <p class="err" id="formErr" role="alert"></p>
+        <div class="form-actions">
+          <a class="btn btn-ghost" href="${editId ? esc(goodsUrl(BASE, editId)) : `${BASE}goods/`}">やめる</a>
+          <button class="btn btn-primary" type="submit" id="saveBtn">${editId ? '更新する' : '投稿する'}</button>
+        </div>
+        <p class="small">GamePita では売り買い・交換はできません。投稿すると、<a href="${BASE}terms/" target="_blank" rel="noopener">利用規約</a>と<a href="${BASE}rules/" target="_blank" rel="noopener">投稿のルール</a>に同意したことになります。</p>
+      </form>`;
+
+    let rating = data.rating || 0;
+    const starBtns = [...$('starInput').querySelectorAll('button')];
+    starBtns.forEach(b => b.addEventListener('click', () => { rating = +b.dataset.n; starBtns.forEach(x => x.classList.toggle('on', +x.dataset.n <= rating)); saveDraft(); }));
+    const body = $('gBody');
+    const upd = () => { $('preview').innerHTML = renderBody(body.value) || '<p class="small">ここに表示されます</p>'; $('bodyCount').textContent = `${body.value.length} / 8000`; };
+    let t = 0; body.addEventListener('input', () => { clearTimeout(t); t = setTimeout(upd, 150); }); upd();
+    const updImg = () => {
+      const u = safeUrl($('gImage').value.trim());
+      $('imgPrev').innerHTML = u ? `<img src="${esc(u)}" alt="商品の画像のプレビュー" referrerpolicy="no-referrer">` : '';
+    };
+    $('gImage').addEventListener('change', updImg); updImg();
+    bindBodyTools($('goodsForm'), body, () => { upd(); saveDraft(); });
+
+    // 全角数字・カンマ・「円」も受けつけて、数字にする（空なら null、変な値なら NaN）
+    const parsePrice = v => {
+      const x = v.normalize('NFKC').replace(/[,，円\s]/g, '');
+      return x === '' ? null : (/^\d{1,8}$/.test(x) ? Number(x) : NaN);
+    };
+    const collect = () => ({
+      title: $('gTitle').value.trim(), name: $('gName').value.trim(),
+      category: ($('goodsForm').querySelector('input[name=category]:checked') || {}).value || '',
+      maker: $('gMaker').value.trim(), price: parsePrice($('gPrice').value),
+      rating, body: body.value, image_url: $('gImage').value.trim(), shop_url: $('gShop').value.trim(), pr: $('gPr').checked,
+      tags: $('gTags').value.split(/[\s,、，]+/).map(x => x.replace(/^[#＃]+/, '').trim()).filter(Boolean),
+    });
+    const saveDraft = () => { if (!editId) { try { const d = collect(); if (Number.isNaN(d.price)) d.price = null; localStorage.setItem(GOODS_DRAFT_KEY, JSON.stringify(d)); } catch { /* 容量不足は無視 */ } } };
+    $('goodsForm').addEventListener('input', saveDraft);
+    $('goodsForm').addEventListener('change', saveDraft);
+
+    $('goodsForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const d = collect(); const err = $('formErr'); err.textContent = '';
+      const check = !d.name ? 'goods_name' : !d.title ? 'title' : !d.category ? 'category'
+        : Number.isNaN(d.price) || (d.price != null && d.price > 10000000) ? 'price' : !d.rating ? 'rating' : !d.body.trim() ? 'body'
+        : (d.image_url && !safeUrl(d.image_url)) || (d.shop_url && !safeUrl(d.shop_url)) ? 'url'
+        : d.tags.length > 5 || d.tags.some(x => x.length > 20) ? 'tags' : null;
+      if (check) { err.textContent = REASONS[check]; return; }
+      $('saveBtn').disabled = true;
+      try {
+        const r = await rpc('gp_goods_save', { p_token: token(), p_id: editId || null, p_data: d });
+        if (!r.ok) { err.textContent = reasonText(r.reason); return; }
+        if (!editId) localStorage.removeItem(GOODS_DRAFT_KEY);
+        toast(editId ? '更新しました' : '投稿しました！');
+        go(goodsUrl(BASE, r.id));
+      } catch { err.textContent = '送れませんでした。通信を確かめてください（下書きはこの端末に残っています）。'; }
+      finally { const b = $('saveBtn'); if (b) b.disabled = false; }
+    });
+  }
+
   // ---------- ルール ----------
   function renderRules() {
     setMeta({ title: '投稿のルール・本文の書き方', desc: 'GamePita に記事やコメントを書くときのルールと、本文の書き方（見出し・太字・画像・YouTube の埋め込み）です。', path: `${BASE}rules/` });
@@ -897,6 +1195,13 @@
         <li>ネタバレは記事の先頭で「ネタバレあり」と書いてから。</li>
         <li>ほかの人の文章や画像を、そのまま自分のものとして使わない。画像はゲームの公式サイトなどのものを使おう。</li>
         <li>宣伝だけの記事や、あやしいサイトへのリンクは禁止。</li>
+      </ol>
+      <h2>🛍️ 商品紹介のルール</h2>
+      <ol>
+        <li>実際に使った・持っている商品の感想を書こう。</li>
+        <li>メーカーなどから商品やお金をもらったり、頼まれたりして書くときは、必ず「PR」にチェックを入れる。</li>
+        <li>GamePita では<b>売り買い・交換・プレゼントの呼びかけは禁止</b>。知らない人とのやりとりはトラブルのもとです。</li>
+        <li>画像は、メーカーの公式サイトの画像か、自分で撮った写真を使おう。</li>
       </ol>
       <p>ルールを守らない記事やコメントは、管理者が非表示・削除することがあります。見つけたら「🚩 通報」から教えてください。</p>
       <h2>本文の書き方</h2>
@@ -1028,6 +1333,11 @@
     else if ((m = rel.match(/^blog\/(\d{1,15})\/edit\/?$/))) renderEditor(Number(m[1]));
     else if ((m = rel.match(/^genre\/([a-z-]{2,20})\/?$/)) && SLUG_GENRE[m[1]]) renderList(SLUG_GENRE[m[1]]);
     else if (/^new\/?$/.test(rel)) renderEditor(null);
+    else if (/^goods\/?$/.test(rel)) renderGoodsList('');
+    else if (/^goods\/new\/?$/.test(rel)) renderGoodsEditor(null);
+    else if ((m = rel.match(/^goods\/category\/([a-z]{3,8})\/?$/)) && Object.hasOwn(GOODS_CATS, m[1])) renderGoodsList(m[1]);
+    else if ((m = rel.match(/^goods\/(\d{1,15})\/?$/))) renderGoods(Number(m[1]));
+    else if ((m = rel.match(/^goods\/(\d{1,15})\/edit\/?$/))) renderGoodsEditor(Number(m[1]));
     else if (/^shindan\/?$/.test(rel)) renderShindan();
     else if (/^shindan\/type\/?$/.test(rel)) renderTypeList();
     else if ((m = rel.match(/^shindan\/type\/([a-z-]{5,30})\/?$/))) renderType(m[1]);
@@ -1051,7 +1361,7 @@
     // ログイン・ログアウトしたら読み直す（書きかけの記事がある画面はそのまま）
     ka?.onChange(async () => {
       await Promise.all([loadMe(), loadNotifs()]); updateHeader();
-      if (!$('postForm')) route();
+      if (!$('postForm') && !$('goodsForm')) route();
     });
   })();
   console.info(`GamePita v${VERSION}`);

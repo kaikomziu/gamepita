@@ -24,6 +24,11 @@
   const LENGTHS = { short: 'すきま時間', long: 'じっくり', both: 'どちらも' };
   const DIFFS = { easy: 'やさしい', normal: 'ふつう', hard: 'むずかしい' };
   const PRICES = { free: '無料（基本無料）', paid: '有料' };
+  // 商品紹介の種類（DB の gp_goods.category と同じ）。URL は /goods/category/<key>/
+  const GOODS_CATS = {
+    soft: { e: '💿', t: 'ゲームソフト' }, hard: { e: '🕹️', t: 'ゲーム機' }, acc: { e: '🎧', t: '周辺機器・アクセサリー' },
+    goods: { e: '🧸', t: 'グッズ' }, book: { e: '📚', t: '本・攻略本' }, other: { e: '📦', t: 'その他' },
+  };
   const MARKS = { want: { e: '👀', t: '気になる' }, playing: { e: '🎮', t: 'プレイ中' }, done: { e: '🏁', t: '遊んだ！' } };
 
   // ピタっと診断のタイプ（遊び方 × 時間 × 難しさ の8種類）。画像は ogp/type-<slug>.png
@@ -161,6 +166,10 @@
   const typeUrl = (base, slug) => `${base}shindan/type/${slug}/`;
   const badgesHtml = list => (list || []).map(b => `<span class="badge" title="${esc(b.t)}">${esc(b.e)} ${esc(b.t)}</span>`).join('');
 
+  const goodsUrl = (base, id) => `${base}goods/${Number(id)}/`;
+  const goodsCatUrl = (base, cat) => `${base}goods/category/${GOODS_CATS[cat] ? cat : 'other'}/`;
+  const yen = n => (n == null || n === '' ? '' : `${Number(n).toLocaleString('ja-JP')}円`);
+
   function coverHtml(p) {
     const emoji = GENRE_EMOJI[p.genre] || '🎮';
     const url = p.cover_url ? safeUrl(p.cover_url) : null;
@@ -188,6 +197,59 @@
         </div>
       </a></div>`;
   }
+  // ---------- 商品紹介 ----------
+  function goodsCoverHtml(g) {
+    const emoji = (GOODS_CATS[g.category] || GOODS_CATS.other).e;
+    const url = g.image_url ? safeUrl(g.image_url) : null;
+    return `<div class="cover goods-cover" data-emoji="${esc(emoji)}">${url ? `<img src="${esc(url)}" alt="${esc(g.name)}" loading="lazy" referrerpolicy="no-referrer">` : esc(emoji)}</div>`;
+  }
+  const prBadge = g => (g.pr ? '<span class="pr-badge" title="メーカーなどから提供・依頼を受けて書かれた紹介です">PR</span>' : '');
+  function goodsCardHtml(g, base) {
+    const a = g.author || {}; const c = GOODS_CATS[g.category] || GOODS_CATS.other;
+    const ex = g.excerpt != null ? plainText(g.excerpt) : plainText(g.body);
+    return `<div class="card-wrap"><a class="card" href="${esc(goodsUrl(base, g.id))}">
+        ${goodsCoverHtml(g)}
+        <div class="card-body">
+          <div><span class="genre-badge cat-badge">${c.e} ${esc(c.t)}</span> ${prBadge(g)}</div>
+          <div class="card-game">🛍️ ${esc(g.name)}${g.price != null ? ` <span class="price">${esc(yen(g.price))}</span>` : ''}</div>
+          <h3 class="card-title">${esc(g.title)}</h3>
+          <p class="card-ex">${esc(ex)}</p>
+          <div class="card-meta"><span class="who">${esc(a.avatar || '😀')} ${esc(a.display_name || a.username || '退会したユーザー')}</span>
+            ${stars(Number(g.rating) || 0)} <span>🧩${Number(g.likes) || 0}</span>${g.comments != null ? ` <span>💬${Number(g.comments) || 0}</span>` : ''}</div>
+        </div>
+      </a></div>`;
+  }
+  function goodsInner(g, base) {
+    const c = GOODS_CATS[g.category] || GOODS_CATS.other;
+    const shop = g.shop_url ? safeUrl(g.shop_url) : null;
+    const edited = g.updated_at && new Date(g.updated_at) - new Date(g.created_at) > 60000;
+    return `
+      <nav class="crumbs" aria-label="パンくずリスト"><a href="${esc(base)}">トップ</a> › <a href="${esc(base)}goods/">商品紹介</a> ›
+        <a href="${esc(goodsCatUrl(base, g.category))}">${esc(c.t)}</a></nav>
+      <div class="article-head"><a class="genre-badge cat-badge" href="${esc(goodsCatUrl(base, g.category))}">${c.e} ${esc(c.t)}</a>
+        ${prBadge(g)}<span>🛍️ <b>${esc(g.name)}</b></span></div>
+      <h1>${esc(g.title)}</h1>
+      ${g.pr ? '<div class="pr-note">📢 この記事は、メーカーなどから商品の提供や依頼を受けて書かれた紹介（PR）です。</div>' : ''}
+      <div class="article-head">${authorHtml(base, g.author)}${g.author_badges && g.author_badges.length ? `<span class="badges">${badgesHtml(g.author_badges)}</span>` : ''}
+        <time datetime="${esc(g.created_at)}">${fmtDate(g.created_at)}</time>${edited ? `<span>（${fmtDate(g.updated_at)} 更新）</span>` : ''}</div>
+      <dl class="spec">
+        <div><dt>おすすめ度</dt><dd>${stars(Number(g.rating) || 0)}</dd></div>
+        <div><dt>商品名</dt><dd>${esc(g.name)}</dd></div>
+        <div><dt>種類</dt><dd>${c.e} ${esc(c.t)}</dd></div>
+        ${g.maker ? `<div><dt>メーカー</dt><dd>${esc(g.maker)}</dd></div>` : ''}
+        ${g.price != null ? `<div><dt>参考価格</dt><dd>${esc(yen(g.price))}<span class="small">（書いた時点・目安）</span></dd></div>` : ''}
+      </dl>
+      ${shop ? `<a class="linkcard shop" href="${esc(shop)}" target="_blank" rel="noopener noreferrer nofollow sponsored ugc"><span class="lc-icon">🛒</span>
+        <span class="lc-text"><span class="lc-host">販売ページ・公式ページ（${esc(hostOf(shop))}）</span><span class="lc-url">${esc(shop)}</span></span></a>
+        <p class="small">※ 外部のサイトが開きます。買うときは、おうちの人と相談してね。GamePita では売り買いはしていません。</p>` : ''}
+      <div class="body">${renderBody(g.body)}</div>
+      ${(g.tags || []).length ? `<div class="tags">${g.tags.map(t => `<a class="chip tag" href="${esc(base)}goods/?tag=${encodeURIComponent(t)}">#${esc(t)}</a>`).join('')}</div>` : ''}`;
+  }
+  function goodsCatLinksHtml(base, current) {
+    return `<div class="chips"><a class="chip ${current ? '' : 'on'}" href="${esc(base)}goods/">すべて</a>${Object.entries(GOODS_CATS).map(([k, c]) =>
+      `<a class="chip ${current === k ? 'on' : ''}" href="${esc(goodsCatUrl(base, k))}">${c.e} ${esc(c.t)}</a>`).join('')}</div>`;
+  }
+
   // 記事の中身（ボタン類は除く）
   function articleInner(p, base) {
     const official = p.official_url ? safeUrl(p.official_url) : null;
@@ -277,7 +339,7 @@
       <h2>1. 集める情報</h2>
       <ul>
         <li><b>アカウントの情報</b>：ユーザー名・表示名・アイコン（かるわかGAMESアカウント）。パスワードは暗号化して保存していて、運営者も見ることはできません。</li>
-        <li><b>投稿した内容</b>：記事・コメント・ピタっと！（いいね）・「気になる／プレイ中／遊んだ！」・通報の内容。</li>
+        <li><b>投稿した内容</b>：記事・商品紹介・コメント・ピタっと！（いいね）・「気になる／プレイ中／遊んだ！」・通報の内容。</li>
         <li><b>お問い合わせの内容</b>：名前（ニックネームでOK）・種類・本文。</li>
         <li><b>端末に保存する情報</b>：ブラウザの保存領域（localStorage）に、ログイン状態・書きかけの記事・ライト／ダークの設定・お問い合わせの返信を見るための番号を保存します。この情報はこのサイトの動作のためだけに使います。</li>
       </ul>
@@ -294,7 +356,7 @@
 
       <h2>3. 公開される情報・されない情報</h2>
       <ul>
-        <li><b>だれでも見られる</b>：記事・コメント・表示名・アイコン・ユーザー名・バッジ・ピタっと！の数。記事は検索エンジンに表示されることがあります。</li>
+        <li><b>だれでも見られる</b>：記事・商品紹介・コメント・表示名・アイコン・ユーザー名・バッジ・ピタっと！の数。記事は検索エンジンに表示されることがあります。</li>
         <li><b>自分（と運営者）だけ</b>：マイリスト・通知・お問い合わせ・通報の内容。</li>
       </ul>
 
@@ -313,8 +375,8 @@
 
       <h2>6. 情報の削除</h2>
       <ul>
-        <li>自分の記事・コメントは、いつでも自分で削除できます。</li>
-        <li>かるわかGAMESアカウントを削除すると、GamePita の記事・コメント・ピタっと！・マイリストもすべて削除されます。</li>
+        <li>自分の記事・商品紹介・コメントは、いつでも自分で削除できます。</li>
+        <li>かるわかGAMESアカウントを削除すると、GamePita の記事・商品紹介・コメント・ピタっと！・マイリストもすべて削除されます。</li>
         <li>そのほか、削除してほしい情報があれば<a href="${esc(base)}contact/">お問い合わせ</a>からご連絡ください。</li>
       </ul>
 
@@ -343,6 +405,8 @@
         <li>こわい・グロい・性的な内容や画像、法律に違反する内容</li>
         <li>ほかの人の文章・画像・動画を、無断で自分のものとして使うこと（著作権の侵害）</li>
         <li>宣伝・勧誘だけを目的にした投稿、あやしいサイトへのリンク</li>
+        <li>メーカーなどから商品の提供・お金・依頼を受けて書いた紹介を、「PR」の表示をせずに投稿すること（ステルスマーケティング）</li>
+        <li>商品の売り買い・交換・プレゼントの呼びかけ（GamePita では、利用者どうしの取引はできません）</li>
         <li>ネタバレを、隠さずに書くこと（<code>||ネタバレ||</code> で隠してください）</li>
         <li>ほかの人になりすますこと、同じ内容を何度も投稿すること</li>
         <li>サイトに負担をかけたり、不正にアクセスしたりすること</li>
@@ -364,8 +428,10 @@
       <h2>第5条（AI記事について）</h2>
       <p>「GamePita AI編集部」の記事（タグ「AI記事」）は、AI が書いた紹介記事です。内容がまちがっている可能性があるため、ゲームの最新情報は公式サイトなどで確かめてください。</p>
 
-      <h2>第6条（外部リンク・埋め込み）</h2>
+      <h2>第6条（外部リンク・埋め込み・商品紹介）</h2>
       <p>記事の中のリンク先・画像・動画は、外部のサイトのものです。その内容について、このサイトは責任を負いません。</p>
+      <p>商品紹介は利用者の感想です。価格・在庫・仕様は変わることがあるため、買う前に販売ページで確かめてください。
+        GamePita は商品の販売をしておらず、販売ページでの買い物やトラブルについて責任を負いません。</p>
 
       <h2>第7条（免責）</h2>
       <ul>
@@ -389,6 +455,7 @@
 
   return {
     aboutHtml, privacyHtml, termsHtml,
+    GOODS_CATS, goodsUrl, goodsCatUrl, yen, goodsCoverHtml, goodsCardHtml, goodsInner, goodsCatLinksHtml,
     MARKS, TYPES, typeOf, gameUrl, typeUrl, badgesHtml, similarScore,
     GENRES, GENRE_EMOJI, GENRE_SLUG, SLUG_GENRE, PLATFORMS, PLAYERS, LENGTHS, DIFFS, PRICES,
     esc, fmtDate, stars, safeUrl, youtubeId, isImageUrl, hostOf, renderBody, plainText,

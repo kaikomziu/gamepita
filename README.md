@@ -1,4 +1,4 @@
-# GamePita（ゲームピタ） v1.3.0
+# GamePita（ゲームピタ） v1.4.0
 
 自分に合うゲームを、ピタっと見つける。好きなゲームを紹介し合う記事サイト。素の HTML/CSS/JS（`template.html` `style.css` `render.js` `app.js`）。
 
@@ -21,10 +21,15 @@
 - v1.3.0: 運営者情報・クレジット `/about/`、プライバシーポリシー `/privacy/`、利用規約 `/terms/`（本文は `render.js` の `aboutHtml` など、制定日は `LEGAL_DATE`）、
   お問い合わせ `/contact/`（メールアドレスは集めない。端末ごとの番号 `gp_inbox` かアカウントで返信を見る。管理画面で返信、ログイン中なら🔔通知）。
   DB は `gp_inquiries` と `gp_inquiry_submit` `gp_inquiry_mine` `gp_admin_inquiries` `gp_admin_inquiry_reply`（`supabase/v1_3_contact.sql`）。
+- v1.4.0: 商品紹介タブ `/goods/`（ゲームソフト・ゲーム機・周辺機器・グッズ・本・その他）。ゲーム記事とは別テーブル `gp_goods`
+  （ピタっと！`gp_goods_likes`・コメント `gp_goods_comments`）なので、診断・ゲームまとめ・記事一覧には混ざらない。
+  参考価格・販売ページ URL（`rel="sponsored nofollow"`）・PR 表示（提供・依頼を受けた紹介）。売り買い・交換の呼びかけは禁止（規約・ルールに明記）。
+  RPC は `gp_goods_list` `gp_goods_get` `gp_goods_save` `gp_goods_delete` `gp_goods_like` `gp_goods_comment_add` `gp_goods_comment_delete` `gp_goods_export`。
+  通報・通知・管理画面・プロフィールも商品に対応（`supabase/v1_4_goods.sql`）。
 
 ## URL（ページ分け）
 `/`トップ ・ `/blog/` ブログ一覧（`?q=` `?tag=` `?sort=`）・ `/blog/123/` 記事 ・ `/blog/123/edit/` 編集 ・ `/genre/rpg/` ジャンル別 ・
-`/shindan/` 診断 ・ `/shindan/type/<slug>/` 診断タイプ ・ `/game/<id>/` ゲーム ・ `/mylist/` マイリスト ・ `/user/ユーザー名/` 書いた人 ・ `/new/` 書く ・ `/rules/` ルール ・ `/admin/` 管理。
+`/shindan/` 診断 ・ `/shindan/type/<slug>/` 診断タイプ ・ `/game/<id>/` ゲーム ・ `/mylist/` マイリスト ・ `/user/ユーザー名/` 書いた人 ・ `/new/` 書く ・ `/goods/` 商品紹介 ・ `/goods/category/acc/` 種類別 ・ `/goods/12/` 商品 ・ `/goods/new/` 商品を紹介する ・ `/rules/` ルール ・ `/admin/` 管理。
 画面の切りかえは History API（app.js の `route()`）。前の `#/p/1` 形式は新しい URL に転送する。
 
 ## 検索エンジン向け（静的ページの生成）

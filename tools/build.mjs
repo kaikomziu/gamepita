@@ -24,15 +24,15 @@ const DEFAULT_DESC = '好きなゲームを紹介し合うサイト。だれで�
 const appSrc = await readFile(join(ROOT, 'app.js'), 'utf8');
 const VER = (appSrc.match(/const VERSION = '([\d.]+)'/) || [])[1] || '0';
 
-// ---------- 記事の取得 ----------
-async function fetchPosts() {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/gp_export`, {
+// ---------- 記事・商品紹介の取得 ----------
+async function fetchPosts(fn = 'gp_export') {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
     method: 'POST', body: '{}',
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
   });
-  if (!res.ok) throw new Error(`gp_export: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`${fn}: ${res.status} ${await res.text()}`);
   const data = await res.json();
-  if (!Array.isArray(data)) throw new Error('gp_export: 配列ではありません');
+  if (!Array.isArray(data)) throw new Error(`${fn}: 配列ではありません`);
   return data;
 }
 
@@ -79,6 +79,9 @@ async function write(path, html) {
 
 // ---------- 生成 ----------
 const posts = await fetchPosts();
+const goods = await fetchPosts('gp_goods_export');
+const { GOODS_CATS, goodsUrl, goodsCatUrl } = R;
+const ggrid = list => `<div class="grid">${list.map(g => R.goodsCardHtml(g, BASE)).join('')}</div>`;
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
 for (const f of ['style.css', 'app.js', 'render.js', 'theme.js', 'icon.svg', 'ogp.png']) await copyFile(join(ROOT, f), join(OUT, f));
@@ -99,6 +102,8 @@ await write(BASE, page(
   <h2 class="section-title">🆕 新着の記事</h2>
   ${posts.length ? grid(posts.slice(0, 8)) : '<div class="empty">まだ記事がありません。</div>'}
   <div class="more"><a class="btn" href="${BASE}blog/">📚 記事をもっと見る</a></div>
+  ${goods.length ? `<h2 class="section-title">🛍️ 新着の商品紹介</h2>${ggrid(goods.slice(0, 4))}
+  <div class="more"><a class="btn" href="${BASE}goods/">🛍️ 商品紹介をもっと見る</a></div>` : ''}
   <h2 class="section-title">🎮 ジャンルからさがす</h2>
   ${R.genreLinksHtml(BASE, '')}
   <section class="intro"><h2>GamePita（ゲームピタ）とは</h2>
@@ -198,6 +203,44 @@ for (const [gid, list] of games) {
   sitemap.push([abs(path), latest(list)]);
 }
 
+// 商品紹介：一覧・種類別・1件ずつ
+const goodsIntro = '<p class="small">ゲームソフト・ゲーム機・コントローラー・グッズ・攻略本など、「買ってよかった！」をみんなで紹介するコーナーです。</p>';
+await write(`${BASE}goods/`, page(
+  head({ title: '商品紹介（ゲーム・周辺機器・グッズ）', desc: 'ゲームソフト・ゲーム機・周辺機器・グッズ・攻略本など、みんながおすすめする商品の紹介の一覧です。',
+    path: `${BASE}goods/`, jsonld: [crumbsLd([['トップ', BASE], ['商品紹介', `${BASE}goods/`]])] }),
+  `<h1 class="page-title">🛍️ 商品紹介</h1>${goodsIntro}${R.goodsCatLinksHtml(BASE, '')}
+  ${goods.length ? ggrid(goods.slice(0, 24)) : '<div class="empty">まだ商品紹介がありません。</div>'}
+  ${goods.length > 24 ? `<section class="intro"><h2>すべての商品紹介</h2><ul>${goods.map(g =>
+    `<li><a href="${esc(goodsUrl(BASE, g.id))}">${esc(g.title)}（${esc(g.name)}）</a></li>`).join('')}</ul></section>` : ''}`));
+sitemap.push([abs(`${BASE}goods/`), latest(goods)]);
+for (const [k, c] of Object.entries(GOODS_CATS)) {
+  const list = goods.filter(g => g.category === k);
+  const path = goodsCatUrl(BASE, k);
+  await write(path, page(
+    head({ title: `${c.t}のおすすめ・紹介`, desc: `みんながおすすめする${c.t}の紹介。GamePita の商品紹介の一覧です。`, path, noindex: list.length === 0,
+      jsonld: [crumbsLd([['トップ', BASE], ['商品紹介', `${BASE}goods/`], [c.t, path]])] }),
+    `<h1 class="page-title">${c.e} ${esc(c.t)}のおすすめ</h1>${R.goodsCatLinksHtml(BASE, k)}
+    ${list.length ? ggrid(list.slice(0, 48)) : '<div class="empty">まだこの種類の商品紹介はありません。</div>'}`));
+  if (list.length) sitemap.push([abs(path), latest(list)]);
+}
+for (const g of goods) {
+  const path = goodsUrl(BASE, g.id);
+  const c = GOODS_CATS[g.category] || GOODS_CATS.other;
+  const img = g.image_url ? safeUrl(g.image_url) : null;
+  const name = g.author?.display_name || g.author?.username || 'GamePita ユーザー';
+  await write(path, page(
+    head({ title: `${g.title}（${g.name}）`, desc: plainText(g.body, 110) || `${g.name}の紹介`, path, type: 'article', image: img, jsonld: [{
+      '@context': 'https://schema.org', '@type': 'Product', name: g.name, category: c.t, url: abs(path),
+      ...(img ? { image: img } : {}), ...(g.maker ? { brand: { '@type': 'Brand', name: g.maker } } : {}),
+      review: { '@type': 'Review', name: g.title, reviewBody: plainText(g.body, 500), datePublished: g.created_at, inLanguage: 'ja',
+        author: { '@type': 'Person', name, ...(g.author?.username ? { url: abs(userUrl(BASE, g.author.username)) } : {}) },
+        reviewRating: { '@type': 'Rating', ratingValue: g.rating, bestRating: 5, worstRating: 1 } },
+    }, crumbsLd([['トップ', BASE], ['商品紹介', `${BASE}goods/`], [c.t, goodsCatUrl(BASE, g.category)], [g.title, path]])] }),
+    `<article class="article">${R.goodsCoverHtml(g)}<div class="article-in">${R.goodsInner(g, BASE)}</div></article>
+    <section class="comments"><h2>💬 コメント</h2>${loading}</section>`));
+  sitemap.push([abs(path), g.updated_at]);
+}
+
 // 診断タイプ（シェアされたときの画像・説明つきページ）
 const typeLinks = t0 => `<div class="type-list">${TYPES.filter(x => x !== t0).map(x => `<a class="chip" href="${esc(typeUrl(BASE, x.slug))}">${x.e} ${esc(x.name)}</a>`).join('')}</div>`;
 await write(`${BASE}shindan/type/`, page(
@@ -230,6 +273,7 @@ const shells = [
   [`${BASE}shindan/`, { title: 'ピタっと診断（自分に合うゲームがわかる）', desc: '6つの質問に答えるだけで、みんなのゲーム紹介記事の中から、あなたにピタっと合うゲームを相性つきでおすすめします。' }, true],
   [`${BASE}rules/`, { title: '投稿のルール・本文の書き方', desc: 'GamePita に記事やコメントを書くときのルールと、本文の書き方（見出し・太字・画像・YouTube の埋め込み）です。' }, true],
   [`${BASE}new/`, { title: '記事を書く', noindex: true }, false],
+  [`${BASE}goods/new/`, { title: '商品を紹介する', noindex: true }, false],
   [`${BASE}contact/`, { title: 'お問い合わせ', desc: 'GamePita へのご質問・不具合の報告・削除の依頼などは、こちらからどうぞ。' }, true],
   [`${BASE}admin/`, { title: '管理', noindex: true }, false],
   [`${BASE}mylist/`, { title: 'マイリスト', noindex: true }, false],
@@ -249,4 +293,4 @@ ${sitemap.map(([u, mod]) => `  <url><loc>${esc(u)}</loc>${mod ? `<lastmod>${esc(
 </urlset>
 `;
 await writeFile(join(OUT, 'sitemap.xml'), xml, 'utf8');
-console.log(`GamePita v${VER}: 記事 ${posts.length} 件・ページ ${sitemap.length} 件をサイトマップに出力 → ${OUT}`);
+console.log(`GamePita v${VER}: 記事 ${posts.length} 件・商品紹介 ${goods.length} 件・ページ ${sitemap.length} 件をサイトマップに出力 → ${OUT}`);
