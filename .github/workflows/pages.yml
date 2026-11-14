@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 env:
   # 新しい URL（空のあいだは、旧 URL でも今までどおりサイトを公開する）
-  MOVED_TO: ''
+  MOVED_TO: 'https://gamepita.pages.dev/'
 jobs:
   build:
     runs-on: ubuntu-latest

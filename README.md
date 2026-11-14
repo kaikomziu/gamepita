@@ -1,8 +1,11 @@
 # GamePita（ゲームピタ） v1.5.0
 
+> 2026-11-15 に Cloudflare Pages（https://gamepita.pages.dev/）へ引っ越しました。旧 URL（GitHub Pages）は `tools/moved.mjs` が作る案内ページで新しい URL に転送します（`.github/workflows/pages.yml` の `MOVED_TO`）。
+> Cloudflare Pages の設定: ビルドコマンド `node tools/build.mjs`、出力 `_site`、環境変数 `BASE=/` `SITE=https://gamepita.pages.dev/` `NODE_VERSION=22`。記事が変わったときの作り直しは GitHub Actions からデプロイフック（Secret `CF_DEPLOY_HOOK`）。
+
 自分に合うゲームを、ピタっと見つける。好きなゲームを紹介し合う記事サイト。素の HTML/CSS/JS（`template.html` `style.css` `render.js` `app.js`）。
 
-公開: https://kaikomziu.github.io/gamepita/
+公開: https://gamepita.pages.dev/
 
 ## できること
 - だれでも記事を読める。書く・ピタっと！（いいね）・コメント・通報はログインが必要。
