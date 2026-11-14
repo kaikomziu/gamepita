@@ -1,6 +1,6 @@
 // GamePita の静的ページ生成（検索エンジン向け）
 // Supabase の gp_export（公開中の記事だけ）を読み、/blog/123/ などのページと sitemap.xml を _site に書き出す。
-// 使い方: node tools/build.mjs   （環境変数 BASE=/gamepita/ SITE=https://kaikomziu.github.io/gamepita/ OUT=_site）
+// 使い方: node tools/build.mjs   （環境変数 BASE=/ SITE=https://gamepita.pages.dev/ OUT=_site。Cloudflare Pages の設定で入れる）
 // 記事の取得に失敗したら終了コード 1 で止まる（GitHub Actions は公開を中止し、前の版がそのまま残る）。
 import { readFile, writeFile, mkdir, copyFile, rm, cp } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -84,7 +84,7 @@ const { GOODS_CATS, goodsUrl, goodsCatUrl } = R;
 const ggrid = list => `<div class="grid">${list.map(g => R.goodsCardHtml(g, BASE)).join('')}</div>`;
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
-for (const f of ['style.css', 'app.js', 'render.js', 'theme.js', 'icon.svg', 'ogp.png']) await copyFile(join(ROOT, f), join(OUT, f));
+for (const f of ['style.css', 'app.js', 'render.js', 'theme.js', 'icon.svg', 'ogp.png', '_headers']) await copyFile(join(ROOT, f), join(OUT, f));
 await cp(join(ROOT, 'ogp'), join(OUT, 'ogp'), { recursive: true });
 await cp(join(ROOT, 'covers'), join(OUT, 'covers'), { recursive: true });
 

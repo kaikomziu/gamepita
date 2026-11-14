@@ -1,5 +1,7 @@
-# 静的ページ（記事・一覧・サイトマップ）を作って GitHub Pages に公開する
-# push したとき・1時間ごと・手動で動く。記事の取得に失敗したら公開しない（前の版が残る）
+# GitHub Pages（旧 URL）と Cloudflare Pages（新 URL）の更新
+# - pages: 旧 URL の GitHub Pages。MOVED_TO を入れると、全ページが「引っ越しました」の案内ページになる
+# - cloudflare: 1時間ごとに記事・商品紹介を確かめ、変わっていたら Cloudflare Pages を作り直す（デプロイフック）
+#   ※ Cloudflare は push でも自動で作り直される。フックの URL は GitHub の Secrets「CF_DEPLOY_HOOK」に入れる
 name: Build and deploy
 on:
   push:
@@ -14,6 +16,9 @@ permissions:
 concurrency:
   group: pages
   cancel-in-progress: false
+env:
+  # 新しい URL（空のあいだは、旧 URL でも今までどおりサイトを公開する）
+  MOVED_TO: ''
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -26,6 +31,10 @@ jobs:
         env:
           BASE: /gamepita/
           SITE: https://kaikomziu.github.io/gamepita/
+      - if: env.MOVED_TO != ''
+        run: node tools/moved.mjs
+        env:
+          OLD_BASE: /gamepita/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
@@ -38,3 +47,39 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+  cloudflare:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: 記事・商品紹介の中身のハッシュ
+        id: h
+        run: |
+          set -e
+          K='sb_publishable_Ea_sHRg6wMwO9YkDTjgOog_stQT1mfq'
+          U='https://kifnzvktwbomxthzvvgy.supabase.co/rest/v1/rpc'
+          { curl -sf -X POST "$U/gp_export" -H "apikey: $K" -H "Authorization: Bearer $K" -H 'Content-Type: application/json' -d '{}'
+            curl -sf -X POST "$U/gp_goods_export" -H "apikey: $K" -H "Authorization: Bearer $K" -H 'Content-Type: application/json' -d '{}'; } > data.json
+          echo "hash=$(sha256sum data.json | cut -c1-40)" >> "$GITHUB_OUTPUT"
+          echo ok > data-hash.txt
+      - name: 前回と同じか
+        id: c
+        uses: actions/cache/restore@v4
+        with:
+          path: data-hash.txt
+          key: gp-data-${{ steps.h.outputs.hash }}
+          lookup-only: true
+      - name: 変わっていたら Cloudflare Pages を作り直す
+        if: steps.c.outputs.cache-hit != 'true'
+        env:
+          HOOK: ${{ secrets.CF_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo 'CF_DEPLOY_HOOK が未設定なのでスキップ'; exit 0; fi
+          curl -sf -X POST "$HOOK" > /dev/null && echo 'Cloudflare Pages の作り直しを依頼しました'
+      - if: steps.c.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data-hash.txt
+          key: gp-data-${{ steps.h.outputs.hash }}

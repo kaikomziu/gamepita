@@ -1,0 +1,7 @@
+# Cloudflare Pages 用のセキュリティヘッダー（GitHub Pages では使われない）
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://kaikomziu.github.io; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src https://kifnzvktwbomxthzvvgy.supabase.co; frame-src https://www.youtube-nocookie.com; base-uri 'none'; form-action 'self'; manifest-src 'self'; frame-ancestors 'none'

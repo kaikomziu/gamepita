@@ -309,7 +309,7 @@
         <div><dt>サイト名</dt><dd>GamePita（ゲームピタ）</dd></div>
         <div><dt>運営者</dt><dd>かるわか（個人で運営しています）</dd></div>
         <div><dt>運営開始</dt><dd>2026年11月</dd></div>
-        <div><dt>URL</dt><dd>https://kaikomziu.github.io/gamepita/</dd></div>
+        <div><dt>URL</dt><dd>https://gamepita.pages.dev/</dd></div>
         <div><dt>お問い合わせ</dt><dd><a href="${esc(base)}contact/">お問い合わせページ</a>からどうぞ</dd></div>
       </dl>
       <h2>クレジット</h2>
