@@ -161,7 +161,7 @@ $b$※この記事は GamePita の AI 編集部が書いた紹介記事です。
 returning id, game, game_id;
 
 -- 表紙画像（オリジナル、tools/make_covers.py で生成）を設定
-update public.gp_posts p set cover_url = 'https://kaikomziu.github.io/gamepita/covers/ai-' || v.slug || '.png'
+update public.gp_posts p set cover_url = 'https://gamepita.pages.dev/covers/ai-' || v.slug || '.png'
 from (values ('Minecraft','minecraft'),('フォートナイト','fortnite'),('スプラトゥーン3','splatoon3'),('あつまれ どうぶつの森','animal-crossing'),
   ('大乱闘スマッシュブラザーズ SPECIAL','smash-bros'),('マリオカート8 デラックス','mario-kart'),
   ('ゼルダの伝説 ティアーズ オブ ザ キングダム','zelda-totk'),('Among Us','among-us')) v(game, slug)
