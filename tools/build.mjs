@@ -84,7 +84,7 @@ const { GOODS_CATS, goodsUrl, goodsCatUrl } = R;
 const ggrid = list => `<div class="grid">${list.map(g => R.goodsCardHtml(g, BASE)).join('')}</div>`;
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
-for (const f of ['style.css', 'app.js', 'render.js', 'theme.js', 'icon.svg', 'ogp.png', '_headers', 'google638b82f251e650ee.html']) await copyFile(join(ROOT, f), join(OUT, f));
+for (const f of ['style.css', 'app.js', 'render.js', 'theme.js', 'icon.svg', 'ogp.png', '_headers', '_redirects', 'google638b82f251e650ee.html']) await copyFile(join(ROOT, f), join(OUT, f));
 await cp(join(ROOT, 'ogp'), join(OUT, 'ogp'), { recursive: true });
 await cp(join(ROOT, 'covers'), join(OUT, 'covers'), { recursive: true });
 

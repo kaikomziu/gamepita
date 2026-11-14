@@ -81,5 +81,5 @@ async function walk(dir) {
 await walk(OUT);
 await writeFile(join(OUT, '404.html'), page(null), 'utf8');
 // 古いサイトのサイトマップ・アプリ本体は消す（検索エンジンが新しい URL に移れるように）
-for (const f of ['sitemap.xml', 'app.js', 'render.js', 'theme.js', 'style.css', '_headers']) await rm(join(OUT, f), { force: true });
+for (const f of ['sitemap.xml', 'app.js', 'render.js', 'theme.js', 'style.css', '_headers', '_redirects']) await rm(join(OUT, f), { force: true });
 console.log(`案内ページに置きかえました → ${NEW}`);
